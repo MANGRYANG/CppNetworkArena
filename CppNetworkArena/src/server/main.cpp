@@ -1,9 +1,13 @@
+#include <boost/asio/io_context.hpp>
+
 #include <iostream>
 
 #include "NetworkTypes.h"
 
 int main(void)
 {
+    boost::asio::io_context io;
+
     constexpr cna::PlayerId invalidPlayerId = 0;
 
     std::cout << "CppNetworkArena GameServer starting...\n";
