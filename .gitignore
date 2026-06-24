@@ -404,5 +404,5 @@ FodyWeavers.xsd
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudio
 
-# Ignore CSV Files
-*.csv
+# Ignore Output Files
+**/out/
