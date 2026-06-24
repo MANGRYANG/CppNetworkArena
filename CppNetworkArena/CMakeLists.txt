@@ -36,6 +36,8 @@ target_include_directories(CppNetworkArenaShared
 # 서버 실행 파일 생성 (GameServer.exe)
 add_executable(GameServer
     src/server/main.cpp
+    src/server/network/server.cpp
+    src/server/network/server.h
 )
 
 # GameServer 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 Boost.Asio를 링크하도록 설정
