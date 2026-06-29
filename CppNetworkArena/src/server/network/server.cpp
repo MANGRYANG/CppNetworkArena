@@ -1,9 +1,12 @@
 #include "server.h"
 
+#include "session.h"
+
 #include <boost/asio/error.hpp>
 #include <boost/asio/socket_base.hpp>
 
 #include <iostream>
+#include <memory>
 #include <utility>
 
 namespace cna::server
@@ -53,38 +56,11 @@ namespace cna::server
         // 클라이언트 연결에 성공한 경우
         if (!error)
         {
-            // 클라이언트 엔드포인트 정보 확인
-            boost::system::error_code endpointError;
-            const Tcp::endpoint remoteEndpoint = socket.remote_endpoint(endpointError);
+            // 접속된 소켓의 소유권을 Session 객체로 이전
+            const std::shared_ptr<Session> session = std::make_shared<Session>(std::move(socket));
 
-            // 정상적으로 클라이언트 엔드포인트 정보를 가져온 경우
-            if (!endpointError)
-            {
-                // 클라이언트 연결 정보 출력
-                std::cout << "Client connected: " << remoteEndpoint.address().to_string()
-                    << ':' << remoteEndpoint.port() << '\n';
-            }
-            // 엔드포인트 확인 중 에러가 발생한 경우
-            else
-            {
-                // 에러 메시지 출력
-                std::cerr << "Failed to read remote endpoint: " << endpointError.message() << '\n';
-            }
-
-            // 테스트 단계이므로 클라이언트와의 연결 종료
-            boost::system::error_code shutdownError;
-            socket.shutdown(Tcp::socket::shutdown_both, shutdownError);
-
-            // 소켓 종료
-            boost::system::error_code closeError;
-            socket.close(closeError);
-
-            // 소켓 종료 중 에러가 발생한 경우
-            if (closeError)
-            {
-                // 에러 메시지 출력
-                std::cerr << "Failed to close client socket: " << closeError.message() << '\n';
-            }
+            // 클라이언트 연결 처리 시작
+            session->Start();
         }
 
         // 클라이언트 연결에 실패한 경우

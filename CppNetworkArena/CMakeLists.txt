@@ -38,6 +38,8 @@ add_executable(GameServer
     src/server/main.cpp
     src/server/network/server.cpp
     src/server/network/server.h
+    src/server/network/session.cpp
+    src/server/network/session.h
 )
 
 # GameServer 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 Boost.Asio를 링크하도록 설정
