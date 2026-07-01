@@ -1,12 +1,16 @@
 #pragma once
 
+#include <network/message_header.h>
+
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/system/error_code.hpp>
 
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace cna::server
 {
@@ -42,14 +46,26 @@ namespace cna::server
         // 비동기 데이터 수신 결과를 처리하는 함수
         void HandleRead(const boost::system::error_code& error, std::size_t bytesTransferred);
 
+        // 새로 수신한 데이터를 누적 버퍼에 추가하고 메시지 단위로 처리하는 함수
+        bool ProcessReceivedData(std::size_t bytesTransferred);
+
+        // 누적 버퍼에서 완전한 메시지를 반복적으로 분리하는 함수
+        bool ProcessMessages();
+
+        // 완전한 메시지의 헤더와 Payload를 처리하는 함수
+        void HandleMessage(const cna::network::MessageHeader& header, std::span<const std::byte> payload);
+
         // 클라이언트 소켓을 닫는 함수
         void Close();
 
         // 연결된 클라이언트와 통신하는 소켓
         Tcp::socket socket_;
 
-        // 클라이언트가 전송한 데이터를 저장하는 수신 버퍼
-        std::array<char, ReceiveBufferSize> receiveBuffer_{};
+        // 클라이언트가 전송한 데이터를 저장하는 임시 버퍼
+        std::array<std::byte, ReceiveBufferSize> receiveBuffer_{};
+
+        // 여러 번 나뉘어 수신된 TCP 데이터를 저장하는 누적 버퍼
+        std::vector<std::byte> accumulatedBuffer_;
 
         // 로그 출력에 사용할 클라이언트 엔드포인트 정보
         std::string remoteEndpoint_ = "unknown";

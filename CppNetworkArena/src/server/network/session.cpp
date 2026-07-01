@@ -68,22 +68,19 @@ namespace cna::server
 
     void Session::HandleRead(const boost::system::error_code& error, const std::size_t bytesTransferred)
     {
+        // 이번 비동기 읽기에서 수신한 데이터가 존재하는 경우
+        if (bytesTransferred > 0)
+        {
+            // 수신 데이터를 누적 버퍼에 추가하고 메시지 단위로 처리
+            if (!ProcessReceivedData(bytesTransferred))
+            {
+                return;
+            }
+        }
+
         // 데이터를 정상적으로 수신한 경우
         if (!error)
         {
-            // 수신한 데이터 크기와 클라이언트 정보 출력
-            std::cout << "Received " << bytesTransferred
-                << " bytes from " << remoteEndpoint_ << ": ";
-
-            // 수신 버퍼에서 실제 수신한 크기만큼 출력
-            std::cout.write
-            (
-                receiveBuffer_.data(),
-                static_cast<std::streamsize>(bytesTransferred)
-            );
-
-            std::cout << '\n';
-
             // 다음 데이터 수신 작업 등록
             ReadNext();
 
@@ -112,6 +109,91 @@ namespace cna::server
 
         // 클라이언트 소켓 종료
         Close();
+    }
+
+    bool Session::ProcessReceivedData(const std::size_t bytesTransferred)
+    {
+        // 이번 비동기 읽기에서 수신한 데이터를 누적 버퍼에 추가
+        accumulatedBuffer_.insert
+        (
+            accumulatedBuffer_.end(),
+            receiveBuffer_.begin(),
+            receiveBuffer_.begin() + bytesTransferred
+        );
+
+        // 누적 버퍼에서 완전한 메시지 분리
+        return ProcessMessages();
+    }
+
+    bool Session::ProcessMessages()
+    {
+        // 누적 버퍼에 메시지 헤더 크기보다 큰 데이터가 존재하는 경우 반복
+        while (accumulatedBuffer_.size() >= cna::network::MessageHeaderSize)
+        {
+            // 누적 버퍼의 첫 번째 메시지 헤더 복원
+            cna::network::MessageHeader header;
+
+            const std::span<const std::byte> accumulatedData
+            (
+                accumulatedBuffer_.data(),
+                accumulatedBuffer_.size()
+            );
+
+            // 메시지 헤더 역직렬화에 실패한 경우 다음 수신 대기
+            if (!cna::network::DecodeMessageHeader(accumulatedData, header))
+            {
+                return true;
+            }
+
+            // 메시지 크기 범위 검사에 실패한 경우
+            if (header.size < cna::network::MessageHeaderSize || header.size > cna::network::MaxMessageSize)
+            {
+                std::cerr << "Invalid message size from " << remoteEndpoint_
+                    << ": " << header.size << '\n';
+
+                // 잘못된 메시지를 전송한 클라이언트 연결 종료
+                Close();
+
+                return false;
+            }
+
+            // 전체 메시지가 아직 도착하지 않은 경우 다음 수신 대기
+            if (accumulatedBuffer_.size() < header.size)
+            {
+                return true;
+            }
+
+            // 메시지 헤더 뒤의 Payload 영역 생성
+            const std::size_t payloadSize = header.size - cna::network::MessageHeaderSize;
+
+            const std::span<const std::byte> payload
+            (
+                accumulatedBuffer_.data() + cna::network::MessageHeaderSize,
+                payloadSize
+            );
+
+            // 완전한 메시지 처리
+            HandleMessage(header, payload);
+
+            // 처리한 메시지를 누적 버퍼에서 제거
+            accumulatedBuffer_.erase
+            (
+                accumulatedBuffer_.begin(),
+                accumulatedBuffer_.begin() + header.size
+            );
+        }
+
+        return true;
+    }
+
+    void Session::HandleMessage(const cna::network::MessageHeader& header, const std::span<const std::byte> payload)
+    {
+        // 헤더 및 Payload 크기 출력
+        std::cout << "Message received from " << remoteEndpoint_
+            << " | type=" << header.type
+            << " | size=" << header.size
+            << " | payload=" << payload.size()
+            << " bytes\n";
     }
 
     void Session::Close()

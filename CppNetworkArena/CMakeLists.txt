@@ -29,6 +29,13 @@ target_include_directories(CppNetworkArenaShared
         ${CMAKE_CURRENT_SOURCE_DIR}/src/shared
 )
 
+# 서버와 클라이언트에서 공유하는 메시지 헤더 등록
+target_sources(
+    CppNetworkArenaShared
+    INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/message_header.h
+)
+
 # ---------------------------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------------------------
