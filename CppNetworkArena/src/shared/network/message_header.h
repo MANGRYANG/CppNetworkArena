@@ -1,5 +1,7 @@
 #pragma once
 
+#include <network/message_type.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -14,7 +16,7 @@ namespace cna::network
         std::uint16_t size = 0;
 
         // 메시지의 타입을 구분하기 위한 식별자
-        std::uint16_t type = 0;
+        MessageType type = MessageType::Unknown;
     };
 
     // 메시지 헤더가 네트워크 스트림에서 차지하는 크기
@@ -43,7 +45,7 @@ namespace cna::network
 
         // 네트워크 바이트 순서로 저장된 헤더 값 복원
         header.size = ReadUint16(data, 0);
-        header.type = ReadUint16(data, sizeof(std::uint16_t));
+        header.type = static_cast<MessageType>(ReadUint16(data, sizeof(std::uint16_t)));
 
         return true;
     }
@@ -51,6 +53,8 @@ namespace cna::network
     // 메시지 헤더를 네트워크 바이트 순서로 직렬화하는 인라인 함수
     inline std::array<std::byte, MessageHeaderSize> EncodeMessageHeader(const MessageHeader& header)
     {
+        const std::uint16_t type = MessageTypeValue(header.type);
+
         return
         {
             std::byte
@@ -63,11 +67,11 @@ namespace cna::network
             },
             std::byte
             {
-                static_cast<unsigned char>((header.type >> 8) & 0xFF)
+                static_cast<unsigned char>((type >> 8) & 0xFF)
             },
             std::byte
             {
-                static_cast<unsigned char>(header.type & 0xFF)
+                static_cast<unsigned char>(type & 0xFF)
             }
         };
     }

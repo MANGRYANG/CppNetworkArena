@@ -34,6 +34,7 @@ target_sources(
     CppNetworkArenaShared
     INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/message_header.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/message_type.h
 )
 
 # ---------------------------------------------------------------------------------------------

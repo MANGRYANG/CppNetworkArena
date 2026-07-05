@@ -172,8 +172,11 @@ namespace cna::server
                 payloadSize
             );
 
-            // 완전한 메시지 처리
-            HandleMessage(header, payload);
+            // 메시지 타입을 확인해 전용 핸들러 함수를 호출
+            if (!DispatchMessage(header, payload))
+            {
+                return false;
+            }
 
             // 처리한 메시지를 누적 버퍼에서 제거
             accumulatedBuffer_.erase
@@ -186,14 +189,43 @@ namespace cna::server
         return true;
     }
 
-    void Session::HandleMessage(const cna::network::MessageHeader& header, const std::span<const std::byte> payload)
+    bool Session::DispatchMessage(const cna::network::MessageHeader& header, std::span<const std::byte> payload)
     {
-        // 헤더 및 Payload 크기 출력
-        std::cout << "Message received from " << remoteEndpoint_
-            << " | type=" << header.type
-            << " | size=" << header.size
-            << " | payload=" << payload.size()
-            << " bytes\n";
+        // 수신된 메시지의 메타데이터 로깅
+        std::cout
+            << "[Session] Message received from " << remoteEndpoint_
+            << ": type=" << cna::network::MessageTypeValue(header.type)
+            << ", size=" << header.size
+            << ", payload=" << payload.size()
+            << '\n';
+
+        // 메시지 타입에 따라 전용 핸들러 함수 호출
+        switch (header.type)
+        {
+        case cna::network::MessageType::TestRequest:
+            return HandleTestRequest(payload);
+
+        case cna::network::MessageType::Unknown:
+        default:
+            std::cerr
+                << "[Session] Unsupported message type from " << remoteEndpoint_
+                << ": " << cna::network::MessageTypeValue(header.type)
+                << '\n';
+
+            Close();
+            return false;
+        }
+    }
+
+    bool Session::HandleTestRequest(std::span<const std::byte> payload)
+    {
+        // 테스트 요청 메시지의 전달 경로 검증용 메시지 출력
+        std::cout
+            << "[Session] TestRequest dispatched: payload="
+            << payload.size()
+            << '\n';
+
+        return true;
     }
 
     void Session::Close()

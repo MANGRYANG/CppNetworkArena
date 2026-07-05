@@ -52,8 +52,11 @@ namespace cna::server
         // 누적 버퍼에서 완전한 메시지를 반복적으로 분리하는 함수
         bool ProcessMessages();
 
-        // 완전한 메시지의 헤더와 Payload를 처리하는 함수
-        void HandleMessage(const cna::network::MessageHeader& header, std::span<const std::byte> payload);
+        // 메시지 타입에 따라 전용 핸들러 함수를 호출하는 디스패치 함수
+        bool DispatchMessage(const cna::network::MessageHeader& header, std::span<const std::byte> payload);
+
+        // 테스트 요청 메시지 전용 핸들러 함수
+        bool HandleTestRequest(std::span<const std::byte> payload);
 
         // 클라이언트 소켓을 닫는 함수
         void Close();
