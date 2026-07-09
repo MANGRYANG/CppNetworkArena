@@ -2,6 +2,7 @@
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/error.hpp>
+#include <boost/asio/write.hpp>
 
 #include <iostream>
 #include <utility>
@@ -226,6 +227,168 @@ namespace cna::server
             << '\n';
 
         return true;
+    }
+
+    bool Session::Send(cna::network::MessageType type, std::span<const std::byte> payload)
+    {
+        // 클라이언트 소켓이 이미 닫혀 있는 경우
+        if (!socket_.is_open())
+        {
+            return false;
+        }
+
+        // 전송할 메시지 타입이 TestResponse가 아닌 경우
+        if (type != cna::network::MessageType::TestResponse)
+        {
+            std::cerr
+                << "Failed to send message to " << remoteEndpoint_
+                << ": non-sendable message type" << '\n';
+
+            return false;
+        }
+
+        // 메시지 전체 크기 계산
+        const std::size_t totalSize = cna::network::MessageHeaderSize + payload.size();
+
+        // 메시지 전체 크기가 허용 가능한 최대 크기를 초과한 경우
+        if (totalSize > cna::network::MaxMessageSize)
+        {
+            std::cerr
+                << "Failed to send message to " << remoteEndpoint_
+                << ": message size exceeds maximum" << '\n';
+
+            return false;
+        }
+
+        // 메시지 헤더 구성
+        const cna::network::MessageHeader header
+        {
+            static_cast<std::uint16_t>(totalSize),
+            type
+        };
+
+        // 메시지 헤더를 네트워크 바이트 순서로 직렬화
+        const auto encodedHeader = cna::network::EncodeMessageHeader(header);
+
+        // 직렬화된 메시지를 담을 송신 버퍼
+        std::vector<std::byte> message;
+        message.reserve(totalSize);
+
+        // 직렬화된 메시지 헤더를 송신 버퍼에 추가
+        message.insert
+        (
+            message.end(),
+            encodedHeader.begin(),
+            encodedHeader.end()
+        );
+
+        // 메시지 헤더 뒤에 Payload 추가
+        message.insert
+        (
+            message.end(),
+            payload.begin(),
+            payload.end()
+        );
+
+        // 기존 송신 작업이 진행 중인지 확인
+        const bool writeInProgress = !sendQueue_.empty();
+
+        // 전송할 메시지를 큐에 추가
+        sendQueue_.push(std::move(message));
+
+        // 진행 중인 송신 작업이 없는 경우 첫 메시지 송신 작업 등록
+        if (!writeInProgress)
+        {
+            WriteNext();
+        }
+
+        return true;
+    }
+
+    void Session::WriteNext()
+    {
+        // 전송할 메시지가 비어 있거나 소켓이 닫힌 경우
+        if(sendQueue_.empty() || !socket_.is_open())
+        {
+            return;
+        }
+
+        const std::shared_ptr<Session> self = shared_from_this();
+
+        // 큐의 첫 번째 메시지에 대한 비동기 쓰기 작업 시작
+        boost::asio::async_write
+        (
+            socket_,
+            boost::asio::buffer(sendQueue_.front()),
+            [self](const boost::system::error_code& error, const std::size_t bytesTransferred)
+            {
+                // 메시지 송신 결과 처리
+                self->HandleWrite(error, bytesTransferred);
+            }
+        );
+    }
+
+    void Session::HandleWrite(const boost::system::error_code& error, const std::size_t bytesTransferred)
+    {
+        // 비동기 메시지 송신 중 에러가 발생한 경우
+        if (error)
+        {
+            // 서버에서 비동기 작업을 취소한 경우가 아닌 경우
+            if(error != boost::asio::error::operation_aborted)
+            {
+                // 데이터 송신 에러 메시지 출력
+                std::cerr
+                    << "Send failed to " << remoteEndpoint_
+                    << ": " << error.message() << '\n';
+            }
+
+            // 메시지 큐 비우기
+            sendQueue_ = std::queue<std::vector<std::byte>>{};
+
+            // 클라이언트 소켓 종료
+            if (socket_.is_open())
+            {
+                Close();
+            }
+
+            return;
+        }
+
+        // 비동기 쓰기 작업 중 연결 종료로 인해 큐가 비워진 경우
+        if (sendQueue_.empty())
+        {
+            return;
+        }
+
+        // 메시지 큐의 첫 번째 메시지 크기
+        const std::size_t expectedBytes = sendQueue_.front().size();
+
+        // 요청한 전체 메시지 크기와 실제 송신 크기가 다른 경우
+        if (bytesTransferred != expectedBytes)
+        {
+            std::cerr
+                << "Incomplete message write to " << remoteEndpoint_
+                << ": expected=" << expectedBytes
+                << ", transferred=" << bytesTransferred
+                << '\n';
+
+            // 메시지 큐 비우기
+            sendQueue_ = std::queue<std::vector<std::byte>>{};
+
+            // 클라이언트 소켓 종료
+            Close();
+
+            return;
+        }
+
+        // 송신이 완료된 첫 번째 메시지를 큐에서 제거
+        sendQueue_.pop();
+
+        // 대기 중인 다음 메시지가 있는 경우 송신 시작
+        if (!sendQueue_.empty())
+        {
+            WriteNext();
+        }
     }
 
     void Session::Close()

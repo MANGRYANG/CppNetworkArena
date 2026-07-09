@@ -8,6 +8,7 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <queue>
 #include <span>
 #include <string>
 #include <vector>
@@ -58,6 +59,15 @@ namespace cna::server
         // 테스트 요청 메시지 전용 핸들러 함수
         bool HandleTestRequest(std::span<const std::byte> payload);
 
+        // 메시지를 직렬화하여 송신 큐에 등록하는 함수
+        bool Send(cna::network::MessageType type, std::span<const std::byte> payload);
+
+        // 다음 비동기 메시지 송신 작업을 등록하는 함수
+        void WriteNext();
+
+        // 비동기 메시지 송신 결과를 처리하는 함수
+        void HandleWrite(const boost::system::error_code& error, std::size_t bytesTransferred);
+
         // 클라이언트 소켓을 닫는 함수
         void Close();
 
@@ -69,6 +79,9 @@ namespace cna::server
 
         // 여러 번 나뉘어 수신된 TCP 데이터를 저장하는 누적 버퍼
         std::vector<std::byte> accumulatedBuffer_;
+
+        // 서버가 전송할 메시지를 보관하는 메시지 큐
+        std::queue<std::vector<std::byte>> sendQueue_;
 
         // 로그 출력에 사용할 클라이언트 엔드포인트 정보
         std::string remoteEndpoint_ = "unknown";
