@@ -226,7 +226,8 @@ namespace cna::server
             << payload.size()
             << '\n';
 
-        return true;
+        // TestRequest 메시지에 대한 응답 메시지 송신 (TestResponse)
+        return Send(cna::network::MessageType::TestResponse, payload);
     }
 
     bool Session::Send(cna::network::MessageType type, std::span<const std::byte> payload)
