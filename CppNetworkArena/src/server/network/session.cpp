@@ -1,5 +1,7 @@
 #include "session.h"
 
+#include <network/message_codec.h>
+
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/asio/write.hpp>
@@ -207,6 +209,7 @@ namespace cna::server
             return HandleTestRequest(payload);
 
         case cna::network::MessageType::Unknown:
+        case cna::network::MessageType::TestResponse:
         default:
             std::cerr
                 << "[Session] Unsupported message type from " << remoteEndpoint_
@@ -238,58 +241,31 @@ namespace cna::server
             return false;
         }
 
-        // 전송할 메시지 타입이 TestResponse가 아닌 경우
-        if (type != cna::network::MessageType::TestResponse)
+        // 서버가 클라이언트로 전송할 수 있는 메시지 타입인지 확인
+        switch (type)
         {
+        case cna::network::MessageType::TestResponse:
+            break;
+        case cna::network::MessageType::Unknown:
+        case cna::network::MessageType::TestRequest:
+        default:
             std::cerr
-                << "Failed to send message to " << remoteEndpoint_
-                << ": non-sendable message type" << '\n';
-
+                << "[Session] Non-sendable message type to " << remoteEndpoint_
+                << ": " << cna::network::MessageTypeValue(type)
+                << '\n';
             return false;
         }
-
-        // 메시지 전체 크기 계산
-        const std::size_t totalSize = cna::network::MessageHeaderSize + payload.size();
-
-        // 메시지 전체 크기가 허용 가능한 최대 크기를 초과한 경우
-        if (totalSize > cna::network::MaxMessageSize)
-        {
-            std::cerr
-                << "Failed to send message to " << remoteEndpoint_
-                << ": message size exceeds maximum" << '\n';
-
-            return false;
-        }
-
-        // 메시지 헤더 구성
-        const cna::network::MessageHeader header
-        {
-            static_cast<std::uint16_t>(totalSize),
-            type
-        };
-
-        // 메시지 헤더를 네트워크 바이트 순서로 직렬화
-        const auto encodedHeader = cna::network::EncodeMessageHeader(header);
 
         // 직렬화된 메시지를 담을 송신 버퍼
         std::vector<std::byte> message;
-        message.reserve(totalSize);
 
-        // 직렬화된 메시지 헤더를 송신 버퍼에 추가
-        message.insert
-        (
-            message.end(),
-            encodedHeader.begin(),
-            encodedHeader.end()
-        );
+        // 메시지 직렬화에 실패한 경우 전송 중단
+        if(!cna::network::EncodeMessage(type, payload, message))
+        {
+            std::cerr << "[Session] Failed to encode message to " << remoteEndpoint_ << '\n';
 
-        // 메시지 헤더 뒤에 Payload 추가
-        message.insert
-        (
-            message.end(),
-            payload.begin(),
-            payload.end()
-        );
+            return false;
+        }
 
         // 기존 송신 작업이 진행 중인지 확인
         const bool writeInProgress = !sendQueue_.empty();
@@ -412,7 +388,7 @@ namespace cna::server
         if (closeError)
         {
             // 에러 메시지 출력
-            std::cerr << "Failed to close client socket: " << closeError.message() << '\n';
+            std::cerr << "[Session] Failed to close client socket: " << closeError.message() << '\n';
         }
     }
 }
