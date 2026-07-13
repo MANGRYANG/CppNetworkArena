@@ -11,8 +11,8 @@
 
 namespace cna::server
 {
-    Session::Session(Tcp::socket socket)
-        : socket_(std::move(socket))
+    Session::Session(const SessionId id, Tcp::socket socket, SessionClosedCallback onClosed)
+        : id_(id), socket_(std::move(socket)), onClosed_(std::move(onClosed))
     {
     }
 
@@ -22,10 +22,17 @@ namespace cna::server
         CacheRemoteEndpoint();
 
         // 클라이언트 연결 정보 출력
-        std::cout << "Client connected: " << remoteEndpoint_ << '\n';
+        std::cout
+            << "Client connected: " << remoteEndpoint_
+            << ", sessionId=" << id_ << '\n';
 
         // 첫 번째 비동기 데이터 수신 작업 등록
         ReadNext();
+    }
+
+    SessionId Session::GetId() const noexcept
+    {
+        return id_;
     }
 
     void Session::CacheRemoteEndpoint()
@@ -370,6 +377,14 @@ namespace cna::server
 
     void Session::Close()
     {
+        // Close가 이미 처리된 경우
+        if (closed_)
+        {
+            return;
+        }
+
+        closed_ = true;
+
         // 클라이언트 소켓이 이미 닫혀 있는 경우
         if (!socket_.is_open())
         {
@@ -389,6 +404,12 @@ namespace cna::server
         {
             // 에러 메시지 출력
             std::cerr << "[Session] Failed to close client socket: " << closeError.message() << '\n';
+        }
+
+        // 세션 관리자에 세션이 종료됨을 전달
+        if (onClosed_)
+        {
+            onClosed_(id_);
         }
     }
 }

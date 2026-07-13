@@ -1,5 +1,7 @@
 #pragma once
 
+#include "session_types.h"
+
 #include <network/message_header.h>
 
 #include <boost/asio/ip/tcp.hpp>
@@ -19,7 +21,7 @@ namespace cna::server
     class Session final : public std::enable_shared_from_this<Session>  // CRTP
     {
     public:
-        explicit Session(boost::asio::ip::tcp::socket socket);
+        explicit Session(SessionId id, boost::asio::ip::tcp::socket socket, SessionClosedCallback onClosed);
 
         // 복사 생성자 및 복사 대입 연산자 삭제
         Session(const Session&) = delete;
@@ -31,6 +33,9 @@ namespace cna::server
 
         // 클라이언트 연결 처리 시작
         void Start();
+
+        // 세션 고유 ID 반환
+        SessionId GetId() const noexcept;
 
     private:
         using Tcp = boost::asio::ip::tcp;
@@ -71,8 +76,17 @@ namespace cna::server
         // 클라이언트 소켓을 닫는 함수
         void Close();
 
+        // 서버에서 세션을 구분하기 위해 사용할 고유 ID
+        SessionId id_ = 0;
+
         // 연결된 클라이언트와 통신하는 소켓
         Tcp::socket socket_;
+
+        // 세션 종료 시 호출할 콜백
+        SessionClosedCallback onClosed_;
+
+        // Close() 함수 중복 호출을 방지하기 위한 상태 값
+        bool closed_ = false;
 
         // 클라이언트가 전송한 데이터를 저장하는 임시 버퍼
         std::array<std::byte, ReceiveBufferSize> receiveBuffer_{};

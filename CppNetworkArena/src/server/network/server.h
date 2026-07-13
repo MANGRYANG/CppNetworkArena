@@ -1,5 +1,7 @@
 #pragma once
 
+#include "session_manager.h"
+
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 
@@ -36,5 +38,8 @@ namespace cna::server
 
         // 네트워크 수신을 담당하는 비동기 Acceptor 객체
         Tcp::acceptor acceptor_;
+
+        // 활성 클라이언트 세션 관리자
+        SessionManager sessionManager_;
     };
 }
