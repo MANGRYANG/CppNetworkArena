@@ -33,6 +33,9 @@ namespace cna::server
         // 활성 세션 목록에서 특정 ID의 세션을 제거하는 함수
         void Remove(SessionId sessionId);
 
+        // 모든 활성 세션을 종료하는 함수
+        void CloseAll();
+
         // 현재 활성 세션의 개수를 반환하는 함수
         std::size_t Count() const noexcept;
 

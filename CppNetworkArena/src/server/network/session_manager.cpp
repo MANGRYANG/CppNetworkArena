@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <utility>
+#include <vector>
 
 namespace cna::server
 {
@@ -45,6 +46,33 @@ namespace cna::server
         std::cout
             << "[SessionManager] Session removed: id=" << sessionId
             << ", active=" << sessions_.size() << '\n';
+    }
+
+    void SessionManager::CloseAll()
+    {
+        // 종료할 세션 목록을 별도 컨테이너에 복사
+        std::vector<std::shared_ptr<Session>> sessionsToClose;
+        sessionsToClose.reserve(sessions_.size());
+
+        for (const auto& [sessionId, session] : sessions_)
+        {
+            if (session)
+            {
+                sessionsToClose.push_back(session);
+            }
+        }
+
+        // 복사된 목록을 기준으로 모든 세션 종료
+        for (const std::shared_ptr<Session>& session : sessionsToClose)
+        {
+            session->Stop();
+        }
+
+        // 관리 대상 세션들의 참조 제거
+        sessions_.clear();
+
+        // 전체 세션 종료 결과 출력
+        std::cout << "[SessionManager] All sessions closed: active=" << sessions_.size() << '\n';
     }
 
     std::size_t SessionManager::Count() const noexcept

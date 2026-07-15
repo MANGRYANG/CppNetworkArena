@@ -34,6 +34,9 @@ namespace cna::server
         // 클라이언트 연결 처리 시작
         void Start();
 
+        // 외부 요청에 의해 세션을 중지하기 위한 함수
+        void Stop();
+
         // 세션 고유 ID 반환
         SessionId GetId() const noexcept;
 

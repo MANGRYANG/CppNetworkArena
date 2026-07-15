@@ -18,6 +18,12 @@ namespace cna::server
 
     void Session::Start()
     {
+        // 이미 종료된 세션인지 확인
+        if (closed_)
+        {
+            return;
+        }
+
         // 연결된 클라이언트의 엔드포인트 정보 가져오기
         CacheRemoteEndpoint();
 
@@ -28,6 +34,12 @@ namespace cna::server
 
         // 첫 번째 비동기 데이터 수신 작업 등록
         ReadNext();
+    }
+
+    void Session::Stop()
+    {
+        // 외부의 세션 종료 요청에 따라 종료 처리
+        Close();
     }
 
     SessionId Session::GetId() const noexcept
@@ -61,6 +73,12 @@ namespace cna::server
 
     void Session::ReadNext()
     {
+        // 이미 종료된 세션인지 확인
+        if (closed_)
+        {
+            return;
+        }
+
         // 비동기 작업이 완료될 때까지 Session 객체의 수명 유지
         const std::shared_ptr<Session> self = shared_from_this();
 
@@ -78,6 +96,12 @@ namespace cna::server
 
     void Session::HandleRead(const boost::system::error_code& error, const std::size_t bytesTransferred)
     {
+        // 이미 종료된 세션인지 확인
+        if (closed_)
+        {
+            return;
+        }
+
         // 이번 비동기 읽기에서 수신한 데이터가 존재하는 경우
         if (bytesTransferred > 0)
         {
@@ -242,6 +266,12 @@ namespace cna::server
 
     bool Session::Send(cna::network::MessageType type, std::span<const std::byte> payload)
     {
+        // 이미 종료된 세션인지 확인
+        if (closed_)
+        {
+            return false;
+        }
+
         // 클라이언트 소켓이 이미 닫혀 있는 경우
         if (!socket_.is_open())
         {
@@ -291,6 +321,12 @@ namespace cna::server
 
     void Session::WriteNext()
     {
+        // 이미 종료된 세션인지 확인
+        if (closed_)
+        {
+            return;
+        }
+
         // 전송할 메시지가 비어 있거나 소켓이 닫힌 경우
         if(sendQueue_.empty() || !socket_.is_open())
         {
@@ -314,6 +350,12 @@ namespace cna::server
 
     void Session::HandleWrite(const boost::system::error_code& error, const std::size_t bytesTransferred)
     {
+        // 이미 종료된 세션인지 확인
+        if (closed_)
+        {
+            return;
+        }
+
         // 비동기 메시지 송신 중 에러가 발생한 경우
         if (error)
         {
@@ -384,6 +426,9 @@ namespace cna::server
         }
 
         closed_ = true;
+
+        // 남아 있는 송신 메시지 큐 비우기
+        sendQueue_ = std::queue<std::vector<std::byte>>{};
 
         // 클라이언트 소켓이 이미 닫혀 있는 경우
         if (!socket_.is_open())
