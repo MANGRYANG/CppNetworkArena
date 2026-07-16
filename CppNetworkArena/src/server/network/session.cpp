@@ -427,9 +427,6 @@ namespace cna::server
 
         closed_ = true;
 
-        // 남아 있는 송신 메시지 큐 비우기
-        sendQueue_ = std::queue<std::vector<std::byte>>{};
-
         // 클라이언트 소켓이 이미 닫혀 있는 경우
         if (!socket_.is_open())
         {
