@@ -80,27 +80,14 @@ namespace cna::server
         // 클라이언트 연결에 성공한 경우
         if (!error)
         {
-            // 클라이언트와의 연결을 관리하는 세션에 부여할 ID 생성
-            const SessionId sessionId = sessionManager_.GenerateSessionId();
+            // 접속된 소켓을 기반으로 세션을 생성하고 활성 세션 목록에 등록
+            const std::shared_ptr<Session> session = sessionManager_.CreateSession(std::move(socket));
 
-            // 접속된 소켓의 소유권을 Session 객체로 이전
-            const std::shared_ptr<Session> session =
-                std::make_shared<Session>
-                (
-                    sessionId,
-                    std::move(socket),
-                    [this](const SessionId closedSessionId)
-                    {
-                        // 종료된 세션을 활성 세션 목록에서 제거
-                        sessionManager_.Remove(closedSessionId);
-                    }
-                );
-
-            // 활성 세션 목록에 등록
-            sessionManager_.Add(session);
-
-            // 클라이언트 연결 처리 시작
-            session->Start();
+            if (session)
+            {
+                // 클라이언트 연결 처리 시작
+                session->Start();
+            }
         }
 
         // 클라이언트 연결에 실패한 경우

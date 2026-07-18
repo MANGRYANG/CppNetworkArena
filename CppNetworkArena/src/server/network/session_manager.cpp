@@ -8,30 +8,46 @@
 
 namespace cna::server
 {
-    SessionId SessionManager::GenerateSessionId() noexcept
+    std::shared_ptr<Session> SessionManager::CreateSession(Tcp::socket socket)
     {
-        return nextSessionId_++;
-    }
+        // 새 세션에 부여할 고유 ID 생성
+        const SessionId sessionId = GenerateSessionId();
 
-    void SessionManager::Add(std::shared_ptr<Session> session)
-    {
-        if (!session)
-        {
-            return;
-        }
-
-        const SessionId sessionId = session->GetId();
+        // 세션 종료 시 SessionManager의 활성 세션 목록에서 제거
+        std::shared_ptr<Session> session =
+            std::make_shared<Session>
+            (
+                sessionId,
+                std::move(socket),
+                [this](const SessionId closedSessionId)
+                {
+                    // 종료된 세션을 활성 세션 목록에서 제거
+                    RemoveSession(closedSessionId);
+                }
+            );
 
         // 활성 세션 목록에 새 세션 등록
-        sessions_[sessionId] = std::move(session);
+        auto [sessionIterator, inserted] = sessions_.emplace(sessionId, std::move(session));
+
+        // 세션 ID가 중복되어 등록에 실패한 경우
+        if (!inserted)
+        {
+            std::cerr
+                << "[SessionManager] Failed to add session: id="
+                << sessionId << '\n';
+
+            return nullptr;
+        }
 
         // 현재 활성 세션 개수 출력
         std::cout
             << "[SessionManager] Session added: id=" << sessionId
             << ", active=" << sessions_.size() << '\n';
+
+        return sessionIterator->second;
     }
 
-    void SessionManager::Remove(const SessionId sessionId)
+    void SessionManager::RemoveSession(const SessionId sessionId)
     {
         // 활성 세션 목록에서 세션 제거
         const std::size_t removedCount = sessions_.erase(sessionId);
@@ -78,5 +94,10 @@ namespace cna::server
     std::size_t SessionManager::Count() const noexcept
     {
         return sessions_.size();
+    }
+
+    SessionId SessionManager::GenerateSessionId() noexcept
+    {
+        return nextSessionId_++;
     }
 }
