@@ -40,6 +40,9 @@ namespace cna::server
         // 세션 고유 ID 반환
         SessionId GetId() const noexcept;
 
+        // 메시지를 직렬화하여 송신 큐에 등록하는 함수
+        bool Send(cna::network::MessageType type, std::span<const std::byte> payload);
+
     private:
         using Tcp = boost::asio::ip::tcp;
 
@@ -66,9 +69,6 @@ namespace cna::server
 
         // 테스트 요청 메시지 전용 핸들러 함수
         bool HandleTestRequest(std::span<const std::byte> payload);
-
-        // 메시지를 직렬화하여 송신 큐에 등록하는 함수
-        bool Send(cna::network::MessageType type, std::span<const std::byte> payload);
 
         // 다음 비동기 메시지 송신 작업을 등록하는 함수
         void WriteNext();

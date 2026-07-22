@@ -54,6 +54,31 @@ namespace cna::server
             << ", active=" << GetSessionCount() << '\n';
     }
 
+    void Room::Broadcast(const cna::network::MessageType type, const std::span<const std::byte> payload)
+    {
+        // Room에 등록된 세션 목록을 순회
+        auto sessionIterator = sessions_.begin();
+
+        while (sessionIterator != sessions_.end())
+        {
+            // 약한 참조에서 실제 세션 객체 획득 시도
+            const std::shared_ptr<Session> session = sessionIterator->second.lock();
+
+            // 이미 만료된 세션인 경우 Room 목록에서 제거
+            if (!session)
+            {
+                sessionIterator = sessions_.erase(sessionIterator);
+
+                continue;
+            }
+
+            // 활성 세션에게 메시지 전송
+            session->Send(type, payload);
+
+            ++sessionIterator;
+        }
+    }
+
     std::size_t Room::GetSessionCount() const noexcept
     {
         std::size_t activeSessionCount = 0;

@@ -3,9 +3,11 @@
 #include "../network/session_types.h"
 
 #include <NetworkTypes.h>
+#include <network/message_type.h>
 
 #include <cstddef>
 #include <memory>
+#include <span>
 #include <unordered_map>
 
 namespace cna::server
@@ -34,6 +36,9 @@ namespace cna::server
 
         // Room에서 특정 세션을 제거하는 함수
         void RemoveSession(SessionId sessionId);
+
+        // Room에 등록된 모든 활성 세션에게 메시지를 전송하는 함수
+        void Broadcast(cna::network::MessageType type, std::span<const std::byte> payload);
 
         // 현재 Room에 남아 있는 활성 세션 수를 반환
         std::size_t GetSessionCount() const noexcept;

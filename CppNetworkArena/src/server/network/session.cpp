@@ -47,6 +47,61 @@ namespace cna::server
         return id_;
     }
 
+    bool Session::Send(cna::network::MessageType type, std::span<const std::byte> payload)
+    {
+        // 이미 종료된 세션인지 확인
+        if (closed_)
+        {
+            return false;
+        }
+
+        // 클라이언트 소켓이 이미 닫혀 있는 경우
+        if (!socket_.is_open())
+        {
+            return false;
+        }
+
+        // 서버가 클라이언트로 전송할 수 있는 메시지 타입인지 확인
+        switch (type)
+        {
+        case cna::network::MessageType::TestResponse:
+            break;
+        case cna::network::MessageType::Unknown:
+        case cna::network::MessageType::TestRequest:
+        default:
+            std::cerr
+                << "[Session] Non-sendable message type to " << remoteEndpoint_
+                << ": " << cna::network::MessageTypeValue(type)
+                << '\n';
+            return false;
+        }
+
+        // 직렬화된 메시지를 담을 송신 버퍼
+        std::vector<std::byte> message;
+
+        // 메시지 직렬화에 실패한 경우 전송 중단
+        if (!cna::network::EncodeMessage(type, payload, message))
+        {
+            std::cerr << "[Session] Failed to encode message to " << remoteEndpoint_ << '\n';
+
+            return false;
+        }
+
+        // 기존 송신 작업이 진행 중인지 확인
+        const bool writeInProgress = !sendQueue_.empty();
+
+        // 전송할 메시지를 큐에 추가
+        sendQueue_.push(std::move(message));
+
+        // 진행 중인 송신 작업이 없는 경우 첫 메시지 송신 작업 등록
+        if (!writeInProgress)
+        {
+            WriteNext();
+        }
+
+        return true;
+    }
+
     void Session::CacheRemoteEndpoint()
     {
         // 클라이언트 엔드포인트 정보 확인
@@ -262,61 +317,6 @@ namespace cna::server
 
         // TestRequest 메시지에 대한 응답 메시지 송신 (TestResponse)
         return Send(cna::network::MessageType::TestResponse, payload);
-    }
-
-    bool Session::Send(cna::network::MessageType type, std::span<const std::byte> payload)
-    {
-        // 이미 종료된 세션인지 확인
-        if (closed_)
-        {
-            return false;
-        }
-
-        // 클라이언트 소켓이 이미 닫혀 있는 경우
-        if (!socket_.is_open())
-        {
-            return false;
-        }
-
-        // 서버가 클라이언트로 전송할 수 있는 메시지 타입인지 확인
-        switch (type)
-        {
-        case cna::network::MessageType::TestResponse:
-            break;
-        case cna::network::MessageType::Unknown:
-        case cna::network::MessageType::TestRequest:
-        default:
-            std::cerr
-                << "[Session] Non-sendable message type to " << remoteEndpoint_
-                << ": " << cna::network::MessageTypeValue(type)
-                << '\n';
-            return false;
-        }
-
-        // 직렬화된 메시지를 담을 송신 버퍼
-        std::vector<std::byte> message;
-
-        // 메시지 직렬화에 실패한 경우 전송 중단
-        if(!cna::network::EncodeMessage(type, payload, message))
-        {
-            std::cerr << "[Session] Failed to encode message to " << remoteEndpoint_ << '\n';
-
-            return false;
-        }
-
-        // 기존 송신 작업이 진행 중인지 확인
-        const bool writeInProgress = !sendQueue_.empty();
-
-        // 전송할 메시지를 큐에 추가
-        sendQueue_.push(std::move(message));
-
-        // 진행 중인 송신 작업이 없는 경우 첫 메시지 송신 작업 등록
-        if (!writeInProgress)
-        {
-            WriteNext();
-        }
-
-        return true;
     }
 
     void Session::WriteNext()
