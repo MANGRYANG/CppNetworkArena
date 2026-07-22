@@ -8,7 +8,7 @@
 
 namespace cna::server
 {
-    std::shared_ptr<Session> SessionManager::CreateSession(Tcp::socket socket)
+    std::shared_ptr<Session> SessionManager::CreateSession(Tcp::socket socket, SessionClosedCallback onSessionClosed)
     {
         // 새 세션에 부여할 고유 ID 생성
         const SessionId sessionId = GenerateSessionId();
@@ -19,10 +19,16 @@ namespace cna::server
             (
                 sessionId,
                 std::move(socket),
-                [this](const SessionId closedSessionId)
+                [this, onSessionClosed = std::move(onSessionClosed)](const SessionId closedSessionId)
                 {
                     // 종료된 세션을 활성 세션 목록에서 제거
                     RemoveSession(closedSessionId);
+
+                    // 세션 종료 후 추가 정리가 필요한 경우 외부 콜백 호출
+                    if (onSessionClosed)
+                    {
+                        onSessionClosed(closedSessionId);
+                    }
                 }
             );
 

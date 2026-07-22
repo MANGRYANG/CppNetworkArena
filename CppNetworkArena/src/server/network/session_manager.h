@@ -29,7 +29,7 @@ namespace cna::server
         SessionManager& operator=(SessionManager&&) = delete;
 
         // 새 세션을 생성하고 세션 목록에 추가하는 함수
-        std::shared_ptr<Session> CreateSession(Tcp::socket socket);
+        std::shared_ptr<Session> CreateSession(Tcp::socket socket, SessionClosedCallback onSessionClosed);
 
         // 활성 세션 목록에서 특정 ID의 세션을 제거하는 함수
         void RemoveSession(SessionId sessionId);
