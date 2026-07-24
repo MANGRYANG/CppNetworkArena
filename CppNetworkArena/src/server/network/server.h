@@ -52,11 +52,11 @@ namespace cna::server
         // 기본으로 사용할 Room을 생성하는 함수
         void CreateDefaultRoom();
 
-        // 생성된 세션을 기본 Room에 등록하는 함수
-        void AddSessionToDefaultRoom(std::shared_ptr<Session> session);
+        // 생성된 세션을 기반으로 하는 플레이어를 기본 Room에 입장시키는 함수
+        bool EnterDefaultRoom(std::shared_ptr<Session> session);
 
-        // 종료된 세션을 기본 Room에서 제거하는 함수
-        void RemoveSessionFromDefaultRoom(SessionId sessionId);
+        // 종료된 세션을 기반으로 하는 플레이어를 기본 Room에서 퇴장시키는 함수
+        void LeaveDefaultRoom(SessionId sessionId);
 
         // 네트워크 수신을 담당하는 비동기 Acceptor 객체
         Tcp::acceptor acceptor_;

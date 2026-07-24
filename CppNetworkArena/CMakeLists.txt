@@ -50,6 +50,8 @@ add_executable(GameServer
     src/server/game/room.h
     src/server/game/room_manager.cpp
     src/server/game/room_manager.h
+    src/server/game/player.h
+    src/server/game/player.cpp
     src/server/network/server.cpp
     src/server/network/server.h
     src/server/network/session.cpp

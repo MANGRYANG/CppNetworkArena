@@ -100,18 +100,24 @@ namespace cna::server
                     std::move(socket),
                     [this](const SessionId closedSessionId)
                     {
-                        // 종료된 세션을 기본 Room에서도 제거
-                        RemoveSessionFromDefaultRoom(closedSessionId);
+                        // 종료된 세션을 기반으로 하는 플레이어를 기본 Room에서 퇴장 처리
+                        LeaveDefaultRoom(closedSessionId);
                     }
                 );
 
             if (session)
             {
-                // 생성된 세션을 기본 Room에 등록
-                AddSessionToDefaultRoom(session);
-
-                // 클라이언트 연결 처리 시작
-                session->Start();
+                // 생성된 세션을 기반으로 하는 플레이어를 기본 Room에 입장시키는 데 성공한 경우
+                if (EnterDefaultRoom(session))
+                {
+                    // 클라이언트 연결 처리 시작
+                    session->Start();
+                }
+                else
+                {
+                    // 기본 Room에 입장 실패한 경우 게임에 참여할 수 없으므로 종료 처리
+                    session->Stop();
+                }
             }
         }
 
@@ -154,36 +160,36 @@ namespace cna::server
         std::cout << "[Server] Default room created: roomId=" << defaultRoomId_ << '\n';
     }
 
-    void Server::AddSessionToDefaultRoom(std::shared_ptr<Session> session)
+    bool Server::EnterDefaultRoom(std::shared_ptr<Session> session)
     {
-        // 유효하지 않은 세션은 Room에 등록하지 않음
+        // 유효하지 않은 세션인 경우 실패 처리
         if (!session)
         {
-            return;
+            return false;
         }
 
-        // 기본 Room이 생성되지 않은 경우 등록하지 않음
+        // 기본 Room이 생성되지 않은 상태인 경우 실패 처리
         if (defaultRoomId_ == 0)
         {
-            return;
+            return false;
         }
 
         // 기본 Room 조회
         const std::shared_ptr<Room> defaultRoom = roomManager_.FindRoom(defaultRoomId_);
 
-        // 기본 Room을 찾지 못한 경우 등록하지 않음
+        // 기본 Room을 찾지 못한 경우 실패 처리
         if (!defaultRoom)
         {
-            return;
+            return false;
         }
 
-        // 세션을 기본 Room에 등록
-        defaultRoom->AddSession(std::move(session));
+        // 세션을 기반으로 한 플레이어를 기본 Room에 등록
+        return defaultRoom->Enter(std::move(session));
     }
 
-    void Server::RemoveSessionFromDefaultRoom(const SessionId sessionId)
+    void Server::LeaveDefaultRoom(const SessionId sessionId)
     {
-        // 기본 Room이 생성되지 않은 경우 제거하지 않음
+        // 기본 Room이 생성되지 않은 상태인 경우 실패 처리
         if (defaultRoomId_ == 0)
         {
             return;
@@ -192,14 +198,14 @@ namespace cna::server
         // 기본 Room 조회
         const std::shared_ptr<Room> defaultRoom = roomManager_.FindRoom(defaultRoomId_);
 
-        // 기본 Room을 찾지 못한 경우 제거하지 않음
+        // 기본 Room을 찾지 못한 경우 실패 처리
         if (!defaultRoom)
         {
             return;
         }
 
-        // 종료된 세션을 기본 Room에서 제거
-        defaultRoom->RemoveSession(sessionId);
+        // 세션에 해당하는 플레이어를 기본 Room에서 등록 해제
+        defaultRoom->Leave(sessionId);
     }
 
     void Server::Stop()

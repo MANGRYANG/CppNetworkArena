@@ -16,58 +16,75 @@ namespace cna::server
         return id_;
     }
 
-    void Room::AddSession(std::shared_ptr<Session> session)
+    bool Room::Enter(std::shared_ptr<Session> session)
     {
-        // 유효하지 않은 세션인 경우 등록하지 않음
+        // 유효하지 않은 세션인 경우 입장시키지 않음
         if (!session)
         {
-            return;
+            return false;
         }
 
         const SessionId sessionId = session->GetId();
 
-        // Room에서 관리하는 세션 목록에 세션 등록
-        sessions_[sessionId] = std::move(session);
+        // 유효하지 않은 세션 ID인 경우 입장시키지 않음
+        if (sessionId == 0)
+        {
+            return false;
+        }
 
-        // 현재 Room에 등록된 세션 개수 출력
+        // 세션을 기반으로 Room 안에서 사용할 Player 생성
+        Player player(session);
+
+        // Room에서 관리하는 플레이어 목록에 등록
+        const auto [playerIterator, inserted] = players_.emplace(sessionId, std::move(player));
+
+        // 이미 같은 세션 ID를 가진 플레이어가 존재하는 경우 입장 실패 처리
+        if (!inserted)
+        {
+            return false;
+        }
+
+        // 현재 Room에 입장한 플레이어 수 출력
         std::cout
-            << "[Room] Session added: roomId=" << id_
-            << ", sessionId=" << sessionId
-            << ", active=" << GetSessionCount() << '\n';
+            << "[Room] Player entered: roomId=" << id_
+            << ", sessionId=" << playerIterator->second.GetSessionId()
+            << ", activePlayers=" << GetPlayerCount() << '\n';
+
+        return true;
     }
 
-    void Room::RemoveSession(const SessionId sessionId)
+    void Room::Leave(const SessionId sessionId)
     {
-        // Room에 등록된 세션 목록에서 세션 제거
-        const std::size_t removedCount = sessions_.erase(sessionId);
+        // Room에 입장한 플레이어 목록에서 플레이어 제거
+        const std::size_t removedCount = players_.erase(sessionId);
 
-        // 제거할 세션이 목록에 없어 제거하지 못한 경우
+        // 제거할 플레이어가 없는 경우
         if (removedCount == 0)
         {
             return;
         }
 
-        // 현재 Room에 등록된 세션 개수 출력
+        // 현재 Room에 입장한 플레이어 수 출력
         std::cout
-            << "[Room] Session removed: roomId=" << id_
+            << "[Room] Player left: roomId=" << id_
             << ", sessionId=" << sessionId
-            << ", active=" << GetSessionCount() << '\n';
+            << ", activePlayers=" << GetPlayerCount() << '\n';
     }
 
     void Room::Broadcast(const cna::network::MessageType type, const std::span<const std::byte> payload)
     {
-        // Room에 등록된 세션 목록을 순회
-        auto sessionIterator = sessions_.begin();
+        // Room에 등록된 플레이어 목록을 순회
+        auto playerIterator = players_.begin();
 
-        while (sessionIterator != sessions_.end())
+        while (playerIterator != players_.end())
         {
-            // 약한 참조에서 실제 세션 객체 획득 시도
-            const std::shared_ptr<Session> session = sessionIterator->second.lock();
+            // 플레이어가 참조하는 실제 세션 객체 획득 시도
+            const std::shared_ptr<Session> session = playerIterator->second.LockSession();
 
-            // 이미 만료된 세션인 경우 Room 목록에서 제거
+            // 이미 만료된 세션인 경우 해당 플레이어를 Room에서 제거
             if (!session)
             {
-                sessionIterator = sessions_.erase(sessionIterator);
+                playerIterator = players_.erase(playerIterator);
 
                 continue;
             }
@@ -75,23 +92,12 @@ namespace cna::server
             // 활성 세션에게 메시지 전송
             session->Send(type, payload);
 
-            ++sessionIterator;
+            ++playerIterator;
         }
     }
 
-    std::size_t Room::GetSessionCount() const noexcept
+    std::size_t Room::GetPlayerCount() const noexcept
     {
-        std::size_t activeSessionCount = 0;
-
-        // 세션이 유효한 경우 활성 세션 카운트에 포함
-        for (const auto& sessionEntry : sessions_)
-        {
-            if (!sessionEntry.second.expired())
-            {
-                ++activeSessionCount;
-            }
-        }
-
-        return activeSessionCount;
+        return players_.size();
     }
 }
