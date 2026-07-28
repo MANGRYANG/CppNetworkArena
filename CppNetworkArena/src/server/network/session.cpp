@@ -1,6 +1,7 @@
 #include "session.h"
 
-#include <network/message_codec.h>
+#include <network/messages/core/message_codec.h>
+#include <network/messages/payloads/player_input_message.h>
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/error.hpp>
@@ -68,6 +69,7 @@ namespace cna::server
             break;
         case cna::network::MessageType::Unknown:
         case cna::network::MessageType::TestRequest:
+        case cna::network::MessageType::PlayerInput:
         default:
             std::cerr
                 << "[Session] Non-sendable message type to " << remoteEndpoint_
@@ -294,6 +296,9 @@ namespace cna::server
         case cna::network::MessageType::TestRequest:
             return HandleTestRequest(payload);
 
+        case cna::network::MessageType::PlayerInput:
+            return HandlePlayerInput(payload);
+
         case cna::network::MessageType::Unknown:
         case cna::network::MessageType::TestResponse:
         default:
@@ -317,6 +322,34 @@ namespace cna::server
 
         // TestRequest 메시지에 대한 응답 메시지 송신 (TestResponse)
         return Send(cna::network::MessageType::TestResponse, payload);
+    }
+
+    bool Session::HandlePlayerInput(std::span<const std::byte> payload)
+    {
+        cna::network::PlayerInputPayload input;
+
+        // PlayerInput Payload 역직렬화에 실패한 경우 연결 종료
+        if (!cna::network::DecodePlayerInputPayload(payload, input))
+        {
+            std::cerr
+                << "[Session] Invalid PlayerInput payload from " << remoteEndpoint_
+                << ": payload=" << payload.size()
+                << '\n';
+
+            Close();
+
+            return false;
+        }
+
+        // 현재 단계에서는 입력을 PlayerState에 적용하지 않고 수신 여부만 확인
+        std::cout
+            << "[Session] PlayerInput decoded: sessionId=" << id_
+            << ", moveX=" << input.moveX
+            << ", moveY=" << input.moveY
+            << ", moveZ=" << input.moveZ
+            << '\n';
+
+        return true;
     }
 
     void Session::WriteNext()

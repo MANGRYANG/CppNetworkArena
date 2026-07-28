@@ -5,7 +5,7 @@
 #include "../network/session_types.h"
 
 #include <NetworkTypes.h>
-#include <network/message_type.h>
+#include <network/messages/core/message_type.h>
 
 #include <cstddef>
 #include <memory>

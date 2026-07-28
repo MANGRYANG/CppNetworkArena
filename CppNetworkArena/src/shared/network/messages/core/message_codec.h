@@ -1,7 +1,7 @@
 #pragma once
 
-#include <network/message_header.h>
-#include <network/message_type.h>
+#include <network/messages/core/message_header.h>
+#include <network/messages/core/message_type.h>
 
 #include <array>
 #include <cstddef>
@@ -18,6 +18,20 @@ namespace cna::network
         const std::uint16_t low = std::to_integer<std::uint16_t>(data[offset + 1]);
 
         return static_cast<std::uint16_t>((high << 8) | low);
+    }
+
+    // 호스트 바이트 순서의 16비트 값을 네트워크 바이트 순서로 기록하는 인라인 함수
+    inline void WriteUint16(std::span<std::byte> data, const std::size_t offset, const std::uint16_t value)
+    {
+        data[offset] = std::byte
+        {
+            static_cast<unsigned char>((value >> 8) & 0xFF)
+        };
+
+        data[offset + 1] = std::byte
+        {
+            static_cast<unsigned char>(value & 0xFF)
+        };
     }
 
     // 수신 데이터에서 메시지 헤더를 역직렬화하는 인라인 함수
@@ -39,27 +53,17 @@ namespace cna::network
     // 메시지 헤더를 네트워크 바이트 순서로 직렬화하는 인라인 함수
     inline std::array<std::byte, MessageHeaderSize> EncodeMessageHeader(const MessageHeader& header)
     {
+        std::array<std::byte, MessageHeaderSize> encodedHeader{};
+
+        // 메시지 전체 크기를 네트워크 바이트 순서로 기록
+        WriteUint16(encodedHeader, 0, header.size);
+
         const std::uint16_t type = MessageTypeValue(header.type);
 
-        return
-        {
-            std::byte
-            {
-                static_cast<unsigned char>((header.size >> 8) & 0xFF)
-            },
-            std::byte
-            {
-                static_cast<unsigned char>(header.size & 0xFF)
-            },
-            std::byte
-            {
-                static_cast<unsigned char>((type >> 8) & 0xFF)
-            },
-            std::byte
-            {
-                static_cast<unsigned char>(type & 0xFF)
-            }
-        };
+        // 메시지 타입을 네트워크 바이트 순서로 기록
+        WriteUint16(encodedHeader, sizeof(std::uint16_t), type);
+
+        return encodedHeader;
     }
 
     // 메시지 타입과 Payload를 하나의 송신 바이트 버퍼로 직렬화하는 함수

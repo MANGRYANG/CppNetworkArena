@@ -2,7 +2,7 @@
 
 #include "session_types.h"
 
-#include <network/message_header.h>
+#include <network/messages/core/message_header.h>
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/system/error_code.hpp>
@@ -69,6 +69,9 @@ namespace cna::server
 
         // 테스트 요청 메시지 전용 핸들러 함수
         bool HandleTestRequest(std::span<const std::byte> payload);
+
+        // 플레이어 입력 메시지 전용 핸들러 함수
+        bool HandlePlayerInput(std::span<const std::byte> payload);
 
         // 다음 비동기 메시지 송신 작업을 등록하는 함수
         void WriteNext();

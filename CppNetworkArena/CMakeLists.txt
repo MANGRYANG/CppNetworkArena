@@ -34,9 +34,10 @@ target_sources(
     CppNetworkArenaShared
     INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/NetworkTypes.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/message_header.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/message_type.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/message_codec.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/messages/core/message_header.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/messages/core/message_type.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/messages/core/message_codec.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/messages/payloads/player_input_message.h
 )
 
 # ---------------------------------------------------------------------------------------------
