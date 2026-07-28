@@ -21,7 +21,13 @@ namespace cna::server
     class Session final : public std::enable_shared_from_this<Session>  // CRTP
     {
     public:
-        explicit Session(SessionId id, boost::asio::ip::tcp::socket socket, SessionClosedCallback onClosed);
+        explicit Session
+        (
+            SessionId id,
+            boost::asio::ip::tcp::socket socket,
+            SessionClosedCallback onClosed,
+            PlayerInputCallback onPlayerInput
+        );
 
         // 복사 생성자 및 복사 대입 연산자 삭제
         Session(const Session&) = delete;
@@ -90,6 +96,9 @@ namespace cna::server
 
         // 세션 종료 시 호출할 콜백
         SessionClosedCallback onClosed_;
+
+        // 플레이어 입력 수신 시 호출할 콜백
+        PlayerInputCallback onPlayerInput_;
 
         // Close() 함수 중복 호출을 방지하기 위한 상태 값
         bool closed_ = false;

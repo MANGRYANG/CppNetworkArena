@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <network/messages/payloads/player_input_message.h>
 
 namespace cna::server
 {
@@ -57,6 +58,9 @@ namespace cna::server
 
         // 종료된 세션을 기반으로 하는 플레이어를 기본 Room에서 퇴장시키는 함수
         void LeaveDefaultRoom(SessionId sessionId);
+
+        // 세션이 수신한 플레이어 입력을 전달받는 함수
+        void HandlePlayerInput(SessionId sessionId, const cna::network::PlayerInputPayload& input);
 
         // 네트워크 수신을 담당하는 비동기 Acceptor 객체
         Tcp::acceptor acceptor_;

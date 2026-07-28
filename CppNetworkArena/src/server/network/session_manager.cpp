@@ -8,7 +8,7 @@
 
 namespace cna::server
 {
-    std::shared_ptr<Session> SessionManager::CreateSession(Tcp::socket socket, SessionClosedCallback onSessionClosed)
+    std::shared_ptr<Session> SessionManager::CreateSession(Tcp::socket socket, SessionClosedCallback onSessionClosed, PlayerInputCallback onPlayerInput)
     {
         // 货 技记俊 何咯且 绊蜡 ID 积己
         const SessionId sessionId = GenerateSessionId();
@@ -29,7 +29,8 @@ namespace cna::server
                     {
                         onSessionClosed(closedSessionId);
                     }
-                }
+                },
+                std::move(onPlayerInput)
             );
 
         // 劝己 技记 格废俊 货 技记 殿废

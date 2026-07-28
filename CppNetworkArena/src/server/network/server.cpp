@@ -102,6 +102,11 @@ namespace cna::server
                     {
                         // 종료된 세션을 기반으로 하는 플레이어를 기본 Room에서 퇴장 처리
                         LeaveDefaultRoom(closedSessionId);
+                    },
+                    [this](const SessionId sessionId, const cna::network::PlayerInputPayload& input)
+                    {
+                        // 세션이 수신한 플레이어 입력을 서버로 전달
+                        HandlePlayerInput(sessionId, input);
                     }
                 );
 
@@ -206,6 +211,33 @@ namespace cna::server
 
         // 세션에 해당하는 플레이어를 기본 Room에서 등록 해제
         defaultRoom->Leave(sessionId);
+    }
+
+    void Server::HandlePlayerInput(SessionId sessionId, const cna::network::PlayerInputPayload& input)
+    {
+        // 기본 Room이 생성되지 않은 상태인 경우 입력을 처리하지 않음
+        if (defaultRoomId_ == 0)
+        {
+            return;
+        }
+
+        // 기본 Room 조회
+        const std::shared_ptr<Room> defaultRoom = roomManager_.FindRoom(defaultRoomId_);
+
+        // 기본 Room을 찾지 못한 경우 입력을 처리하지 않음
+        if (!defaultRoom)
+        {
+            return;
+        }
+
+        // 서버에 PlayerInput 타입 메시지가 전달되는 경로 검증을 위한 로그 출력
+        std::cout
+            << "[Server] PlayerInput received: roomId=" << defaultRoom->GetId()
+            << ", sessionId=" << sessionId
+            << ", moveX=" << input.moveX
+            << ", moveY=" << input.moveY
+            << ", moveZ=" << input.moveZ
+            << '\n';
     }
 
     void Server::Stop()

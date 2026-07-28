@@ -12,8 +12,8 @@
 
 namespace cna::server
 {
-    Session::Session(const SessionId id, Tcp::socket socket, SessionClosedCallback onClosed)
-        : id_(id), socket_(std::move(socket)), onClosed_(std::move(onClosed))
+    Session::Session(SessionId id, boost::asio::ip::tcp::socket socket, SessionClosedCallback onClosed, PlayerInputCallback onPlayerInput)
+        : id_(id), socket_(std::move(socket)), onClosed_(std::move(onClosed)), onPlayerInput_(std::move(onPlayerInput))
     {
     }
 
@@ -341,13 +341,11 @@ namespace cna::server
             return false;
         }
 
-        // 현재 단계에서는 입력을 PlayerState에 적용하지 않고 수신 여부만 확인
-        std::cout
-            << "[Session] PlayerInput decoded: sessionId=" << id_
-            << ", moveX=" << input.moveX
-            << ", moveY=" << input.moveY
-            << ", moveZ=" << input.moveZ
-            << '\n';
+        // 플레이어 입력을 서버로 전달
+        if (onPlayerInput_)
+        {
+            onPlayerInput_(id_, input);
+        }
 
         return true;
     }
