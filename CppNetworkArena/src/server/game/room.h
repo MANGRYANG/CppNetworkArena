@@ -16,7 +16,7 @@ namespace cna::server
 {
     class Session;
 
-    // 하나의 게임 공간에 속한 세션 목록을 관리하는 클래스
+    // 하나의 게임 공간에 속한 플레이어 목록을 관리하는 클래스
     class Room final
     {
     public:
@@ -38,6 +38,9 @@ namespace cna::server
 
         // 세션 ID에 해당하는 플레이어를 Room에서 퇴장시키는 함수
         void Leave(SessionId sessionId);
+
+        // 특정 플레이어에게 입력을 적용하는 함수
+        bool ApplyPlayerInput(SessionId sessionId, const cna::network::PlayerInputPayload& input);
 
         // Room에 등록된 모든 활성 세션에게 메시지를 전송하는 함수
         void Broadcast(cna::network::MessageType type, std::span<const std::byte> payload);

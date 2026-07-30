@@ -230,14 +230,14 @@ namespace cna::server
             return;
         }
 
-        // 서버에 PlayerInput 타입 메시지가 전달되는 경로 검증을 위한 로그 출력
-        std::cout
-            << "[Server] PlayerInput received: roomId=" << defaultRoom->GetId()
-            << ", sessionId=" << sessionId
-            << ", moveX=" << input.moveX
-            << ", moveY=" << input.moveY
-            << ", moveZ=" << input.moveZ
-            << '\n';
+        // 기본 Room에서 세션 ID에 해당하는 플레이어를 찾아 플레이어 입력 적용
+        if (!defaultRoom->ApplyPlayerInput(sessionId, input))
+        {
+            std::cerr
+                << "[Server] Failed to apply PlayerInput: roomId=" << defaultRoom->GetId()
+                << ", sessionId=" << sessionId
+                << '\n';
+        }
     }
 
     void Server::Stop()

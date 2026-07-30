@@ -2,8 +2,55 @@
 
 #include "../network/session.h"
 
+#include <network/messages/payloads/player_input_message.h>
+
+#include <cmath>
 #include <iostream>
 #include <utility>
+
+namespace
+{
+    // 플레이어가 최대 세기의 입력으로 이동할 때의 초당 이동 속도
+    constexpr float PlayerMoveSpeed = 5.0f;
+
+    // 서버에서의 플레이어 이동을 위해 계산된 값을 담을 구조체
+    struct NormalizedPlayerInput
+    {
+        float moveX = 0.0f;
+        float moveY = 0.0f;
+        float moveZ = 0.0f;
+    };
+
+    // PlayerInput 타입 메시지로 전달받은 원시 세기 값을 -1.0f ~ 1.0f 범위의 이동 입력 벡터로 변환하는 함수
+    NormalizedPlayerInput NormalizePlayerInput(const cna::network::PlayerInputPayload& input)
+    {
+        // 축 별 세기를 -1.0f ~ 1.0f 범위로 정규화
+        NormalizedPlayerInput normalizedInput
+        {
+            static_cast<float>(input.moveX) / static_cast<float>(cna::network::MaxPlayerInputAxisRawValue),
+            static_cast<float>(input.moveY) / static_cast<float>(cna::network::MaxPlayerInputAxisRawValue),
+            static_cast<float>(input.moveZ) / static_cast<float>(cna::network::MaxPlayerInputAxisRawValue)
+        };
+
+        // 정규화된 입력 방향 벡터의 길이 제곱
+        const float lengthSquared =
+            normalizedInput.moveX * normalizedInput.moveX +
+            normalizedInput.moveY * normalizedInput.moveY +
+            normalizedInput.moveZ * normalizedInput.moveZ;
+
+        // 방향 벡터의 길이가 1.0f를 넘는 경우 방향 벡터의 길이로 나누어 단위벡터화
+        if (lengthSquared > 1.0f)
+        {
+            const float inverseLength = 1.0f / std::sqrt(lengthSquared);
+
+            normalizedInput.moveX *= inverseLength;
+            normalizedInput.moveY *= inverseLength;
+            normalizedInput.moveZ *= inverseLength;
+        }
+
+        return normalizedInput;
+    }
+}
 
 namespace cna::server
 {
@@ -69,6 +116,40 @@ namespace cna::server
             << "[Room] Player left: roomId=" << id_
             << ", sessionId=" << sessionId
             << ", activePlayers=" << GetPlayerCount() << '\n';
+    }
+
+    bool Room::ApplyPlayerInput(SessionId sessionId, const cna::network::PlayerInputPayload& input)
+    {
+        // 세션 ID에 해당하는 플레이어 검색
+        const auto playerIterator = players_.find(sessionId);
+
+        // 입력을 적용할 플레이어가 없는 경우 실패 처리
+        if (playerIterator == players_.end())
+        {
+            return false;
+        }
+
+        // 전달된 원시 입력 세기 값을 서버에서 사용할 이동 입력 벡터로 정규화
+        const NormalizedPlayerInput normalizedInput = NormalizePlayerInput(input);
+
+        // 플레이어 상태를 수정 가능하도록 참조
+        PlayerState& state = playerIterator->second.GetState();
+
+        // 이동 입력 벡터에 최대 세기의 입력으로 이동할 때의 초당 이동 속도를 곱해 플레이어 속도 갱신
+        state.velocityX = normalizedInput.moveX * PlayerMoveSpeed;
+        state.velocityY = normalizedInput.moveY * PlayerMoveSpeed;
+        state.velocityZ = normalizedInput.moveZ * PlayerMoveSpeed;
+
+        // 갱신한 플레이어의 축 별 속도 값을 로그로 출력
+        std::cout
+            << "[Room] Player velocity updated: roomId=" << id_
+            << ", sessionId=" << sessionId
+            << ", velocityX=" << state.velocityX
+            << ", velocityY=" << state.velocityY
+            << ", velocityZ=" << state.velocityZ
+            << '\n';
+
+        return true;
     }
 
     void Room::Broadcast(const cna::network::MessageType type, const std::span<const std::byte> payload)
