@@ -7,13 +7,23 @@
 #include <boost/asio/error.hpp>
 #include <boost/asio/socket_base.hpp>
 
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <utility>
 
+namespace
+{
+    // 서버 게임 시뮬레이션을 실행할 기본 Tick 간격
+    constexpr std::chrono::milliseconds ServerTickInterval(16);
+
+    // 서버 지연이나 디버깅 중단 이후 한 번에 과도한 시간만큼 시뮬레이션되는 것을 방지하기 위한 최대 delta 시간
+    constexpr float MaxServerTickDeltaSeconds = 0.25f;
+}
+
 namespace cna::server
 {
-    Server::Server(boost::asio::io_context& ioContext, const std::uint16_t port) : acceptor_(ioContext)
+    Server::Server(boost::asio::io_context& ioContext, const std::uint16_t port) : acceptor_(ioContext), tickTimer_(ioContext)
     {
         // port를 통해 들어오는 모든 IPv4 인터페이스의 연결을 수락
         const Tcp::endpoint endpoint(Tcp::v4(), port);
@@ -58,6 +68,9 @@ namespace cna::server
             std::cerr << "Failed to create default room" << '\n';
             return;
         }
+
+        // 서버 게임 Tick 루프 시작
+        StartTickLoop();
 
         // 클라이언트 접속 대기 로직 호출
         AcceptNext();
@@ -240,6 +253,106 @@ namespace cna::server
         }
     }
 
+    void Server::StartTickLoop()
+    {
+        // 서버가 종료된 상태이면 Tick 루프를 시작하지 않음
+        if (stopped_)
+        {
+            return;
+        }
+
+        // 첫 Tick의 deltaSeconds 계산 기준 시간 저장
+        lastTickTime_ = std::chrono::steady_clock::now();
+
+        // 다음 서버 Tick 예약
+        ScheduleNextTick();
+    }
+
+    void Server::ScheduleNextTick()
+    {
+        // 서버가 종료된 상태이면 다음 서버 Tick을 예약하지 않음
+        if (stopped_)
+        {
+            return;
+        }
+
+        // 지정된 서버 Tick 간격 이후 타이머가 완료되도록 설정
+        tickTimer_.expires_after(ServerTickInterval);
+
+        // 타이머 완료 시 서버 Tick 처리 함수 호출
+        tickTimer_.async_wait
+        (
+            [this](const boost::system::error_code& error)
+            {
+                HandleTick(error);
+            }
+        );
+    }
+
+    void Server::HandleTick(const boost::system::error_code& error)
+    {
+        // 서버가 종료된 경우 Tick을 처리하지 않음
+        if (stopped_)
+        {
+            return;
+        }
+
+        // Stop() 단계에서 타이머가 취소된 경우 정상 종료 흐름으로 처리
+        if (error == boost::asio::error::operation_aborted)
+        {
+            return;
+        }
+
+        // 타이머 처리 중 에러가 발생한 경우 로그 메시지 출력 후 Tick 루프 중단
+        if (error)
+        {
+            std::cerr << "[Server] Tick timer failed: " << error.message() << '\n';
+
+            return;
+        }
+
+        const auto currentTickTime = std::chrono::steady_clock::now();
+
+        // 이전 Tick 이후 실제로 흐른 시간 계산
+        float deltaSeconds = std::chrono::duration<float>(currentTickTime - lastTickTime_).count();
+
+        // 서버 Tick이 실행된 시간 갱신
+        lastTickTime_ = currentTickTime;
+
+        // 과도한 지연이 발생한 경우 한 Tick에서 처리할 최대 시간을 제한
+        if (deltaSeconds > MaxServerTickDeltaSeconds)
+        {
+            deltaSeconds = MaxServerTickDeltaSeconds;
+        }
+
+        // 기본 Room의 게임 상태 갱신
+        TickDefaultRoom(deltaSeconds);
+
+        // 다음 Tick 예약
+        ScheduleNextTick();
+    }
+
+    void Server::TickDefaultRoom(const float deltaSeconds)
+    {
+        // 기본 Room이 생성되지 않은 상태인 경우 처리하지 않음
+        if (defaultRoomId_ == 0)
+        {
+            return;
+        }
+
+        // 기본 Room 조회
+        const std::shared_ptr<Room> defaultRoom = roomManager_.FindRoom(defaultRoomId_);
+
+        // 기본 Room을 찾지 못한 경우 처리하지 않음
+        if (!defaultRoom)
+        {
+            return;
+        }
+
+        // 기본 Room의 게임 상태 갱신
+        defaultRoom->Tick(deltaSeconds);
+    }
+
     void Server::Stop()
     {
         // 이미 서버 종료 처리된 경우
@@ -249,6 +362,9 @@ namespace cna::server
         }
 
         stopped_ = true;
+
+        // 예약된 서버 Tick 타이머를 취소
+        tickTimer_.cancel();
 
         // 리스닝 소켓이 열려 있는 경우 새 연결 수락을 중단
         if (acceptor_.is_open())

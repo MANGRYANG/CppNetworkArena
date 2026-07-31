@@ -152,6 +152,26 @@ namespace cna::server
         return true;
     }
 
+    void Room::Tick(float deltaSeconds)
+    {
+        // 유효하지 않은 시간 값이면 위치를 갱신하지 않음
+        if (deltaSeconds <= 0.0f)
+        {
+            return;
+        }
+
+        // Room에 등록된 모든 플레이어의 위치를 현재 플레이어 속도 값 기준으로 갱신
+        for (auto& playerEntry : players_)
+        {
+            Player& player = playerEntry.second;
+            PlayerState& state = player.GetState();
+
+            state.positionX += state.velocityX * deltaSeconds;
+            state.positionY += state.velocityY * deltaSeconds;
+            state.positionZ += state.velocityZ * deltaSeconds;
+        }
+    }
+
     void Room::Broadcast(const cna::network::MessageType type, const std::span<const std::byte> payload)
     {
         // Room에 등록된 플레이어 목록을 순회

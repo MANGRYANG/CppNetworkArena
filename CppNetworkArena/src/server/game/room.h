@@ -42,6 +42,9 @@ namespace cna::server
         // 특정 플레이어에게 입력을 적용하는 함수
         bool ApplyPlayerInput(SessionId sessionId, const cna::network::PlayerInputPayload& input);
 
+        // 현재 Room의 게임 상태를 지정한 시간만큼 진행하는 함수
+        void Tick(float deltaSeconds);
+
         // Room에 등록된 모든 활성 세션에게 메시지를 전송하는 함수
         void Broadcast(cna::network::MessageType type, std::span<const std::byte> payload);
 

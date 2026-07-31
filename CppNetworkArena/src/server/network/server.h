@@ -8,7 +8,9 @@
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/steady_timer.hpp>
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <network/messages/payloads/player_input_message.h>
@@ -62,8 +64,26 @@ namespace cna::server
         // 세션이 수신한 플레이어 입력을 전달받는 함수
         void HandlePlayerInput(SessionId sessionId, const cna::network::PlayerInputPayload& input);
 
+        // 서버 Tick 루프를 시작하는 함수
+        void StartTickLoop();
+
+        // 다음 서버 Tick 실행을 예약하는 함수
+        void ScheduleNextTick();
+
+        // 서버 Tick 타이머 완료 시 호출되는 함수
+        void HandleTick(const boost::system::error_code& error);
+
+        // 기본 Room의 게임 상태를 지정한 시간만큼 진행하는 함수
+        void TickDefaultRoom(float deltaSeconds);
+
         // 네트워크 수신을 담당하는 비동기 Acceptor 객체
         Tcp::acceptor acceptor_;
+
+        // 서버 게임 Tick을 일정 간격으로 실행하기 위한 타이머
+        boost::asio::steady_timer tickTimer_;
+
+        // 마지막 서버 Tick이 실행된 시간
+        std::chrono::steady_clock::time_point lastTickTime_;
 
         // 활성 클라이언트 세션 관리자
         SessionManager sessionManager_;
