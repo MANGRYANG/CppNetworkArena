@@ -17,7 +17,10 @@ namespace cna::network
         TestResponse = 2,
 
         // 클라이언트가 서버에 전송하는 플레이어 입력
-        PlayerInput = 3
+        PlayerInput = 3,
+
+        // 서버가 클라이언트로 전송하는 Room의 게임 상태 스냅샷
+        WorldStateSnapshot = 4
     };
 
     // MessageType을 네트워크 헤더에 저장할 정수 값으로 변환하는 인라인 함수

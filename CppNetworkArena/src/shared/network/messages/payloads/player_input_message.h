@@ -8,6 +8,15 @@
 #include <cstdint>
 #include <span>
 
+/*
+*
+PlayerInput 타입 메시지 Payload wire format :
+[moveX: int16]
+[moveY: int16]
+[moveZ: int16]
+*
+*/
+
 namespace cna::network
 {
     // 클라이언트가 서버에 전달하는 플레이어 입력 Payload

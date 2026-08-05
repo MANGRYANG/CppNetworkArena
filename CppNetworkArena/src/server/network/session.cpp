@@ -66,6 +66,7 @@ namespace cna::server
         switch (type)
         {
         case cna::network::MessageType::TestResponse:
+        case cna::network::MessageType::WorldStateSnapshot:
             break;
         case cna::network::MessageType::Unknown:
         case cna::network::MessageType::TestRequest:
@@ -301,6 +302,7 @@ namespace cna::server
 
         case cna::network::MessageType::Unknown:
         case cna::network::MessageType::TestResponse:
+        case cna::network::MessageType::WorldStateSnapshot:
         default:
             std::cerr
                 << "[Session] Unsupported message type from " << remoteEndpoint_
