@@ -2,6 +2,8 @@
 
 #include "../network/session_types.h"
 
+#include <NetworkTypes.h>
+
 #include <memory>
 
 namespace cna::server
@@ -30,7 +32,10 @@ namespace cna::server
     class Player final
     {
     public:
-        explicit Player(std::shared_ptr<Session> session);
+        explicit Player(cna::PlayerId playerId, std::shared_ptr<Session> session);
+
+        // Room 내부에서 플레이어를 식별하는 ID를 반환하는 함수
+        cna::PlayerId GetPlayerId() const noexcept;
 
         // 플레이어와 연결된 세션 ID를 반환하는 함수
         SessionId GetSessionId() const noexcept;
@@ -45,6 +50,9 @@ namespace cna::server
         std::shared_ptr<Session> LockSession() const;
 
     private:
+        // Room 내부에서 플레이어를 식별하기 위해 서버가 발급한 ID
+        cna::PlayerId playerId_ = 0;
+
         // 플레이어와 연결된 세션 ID
         SessionId sessionId_ = 0;
 

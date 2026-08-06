@@ -4,16 +4,22 @@
 
 namespace cna::server
 {
-    Player::Player(std::shared_ptr<Session> session)
+    Player::Player(const cna::PlayerId playerId, std::shared_ptr<Session> session)
     {
-        // 유효하지 않은 세션이면 기본 상태 유지
-        if (!session)
+        // 플레이어 식별자나 세션이 유효하지 않은 경우 기본 상태 유지
+        if (playerId == 0 || !session)
         {
             return;
         }
 
+        playerId_ = playerId;
         sessionId_ = session->GetId();
         session_ = session;
+    }
+
+    cna::PlayerId Player::GetPlayerId() const noexcept
+    {
+        return playerId_;
     }
 
     SessionId Player::GetSessionId() const noexcept

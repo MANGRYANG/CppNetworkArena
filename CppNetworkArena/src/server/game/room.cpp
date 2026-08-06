@@ -5,6 +5,7 @@
 #include <network/messages/payloads/player_input_message.h>
 
 #include <cmath>
+#include <limits>
 #include <iostream>
 #include <utility>
 
@@ -54,21 +55,21 @@ namespace
 
 namespace cna::server
 {
-    Room::Room(const cna::RoomId id) : id_(id)
+    Room::Room(const cna::RoomId id) : roomId_(id)
     {
     }
 
-    cna::RoomId Room::GetId() const noexcept
+    cna::RoomId Room::GetRoomId() const noexcept
     {
-        return id_;
+        return roomId_;
     }
 
-    bool Room::Enter(std::shared_ptr<Session> session)
+    std::optional<cna::PlayerId> Room::Enter(std::shared_ptr<Session> session)
     {
         // 유효하지 않은 세션인 경우 입장시키지 않음
         if (!session)
         {
-            return false;
+            return std::nullopt;
         }
 
         const SessionId sessionId = session->GetId();
@@ -76,25 +77,31 @@ namespace cna::server
         // 유효하지 않은 세션 ID인 경우 입장시키지 않음
         if (sessionId == 0)
         {
-            return false;
+            return std::nullopt;
         }
 
-        // 세션을 기반으로 Room 안에서 사용할 Player 생성
-        Player player(session);
+        // 플레이어 ID 발급
+        const std::optional<cna::PlayerId> playerId = GeneratePlayerId();
+
+        // 플레이어 ID 공간을 모두 소진한 경우 입장 실패 처리
+        if (!playerId)
+        {
+            return std::nullopt;
+        }
 
         // Room에서 관리하는 플레이어 목록에 등록
-        const auto [playerIterator, inserted] = players_.emplace(sessionId, std::move(player));
+        const auto [playerIterator, inserted] = players_.try_emplace(sessionId, *playerId, session);
 
         // 이미 같은 세션 ID를 가진 플레이어가 존재하는 경우 입장 실패 처리
         if (!inserted)
         {
-            return false;
+            return std::nullopt;
         }
 
         // 현재 Room에 입장한 플레이어 수 출력
         std::cout
-            << "[Room] Player entered: roomId=" << id_
-            << ", sessionId=" << playerIterator->second.GetSessionId()
+            << "[Room] Player entered: roomId=" << roomId_
+            << ", playerId=" << playerIterator->second.GetPlayerId()
             << ", activePlayers=" << GetPlayerCount() << '\n';
 
         return true;
@@ -102,19 +109,25 @@ namespace cna::server
 
     void Room::Leave(const SessionId sessionId)
     {
-        // Room에 입장한 플레이어 목록에서 플레이어 제거
-        const std::size_t removedCount = players_.erase(sessionId);
+        // Room에서 퇴장할 플레이어 탐색
+        const auto playerIterator = players_.find(sessionId);
 
-        // 제거할 플레이어가 없는 경우
-        if (removedCount == 0)
+        // 세션 ID를 통해 퇴장할 플레이어를 찾지 못한 경우
+        if (playerIterator == players_.end())
         {
             return;
         }
 
+        // 제거할 플레이어의 플레이어 ID 추출
+        const cna::PlayerId playerId = playerIterator->second.GetPlayerId();
+
+        // Room에 입장한 플레이어 목록에서 플레이어 제거
+        players_.erase(playerIterator);
+
         // 현재 Room에 입장한 플레이어 수 출력
         std::cout
-            << "[Room] Player left: roomId=" << id_
-            << ", sessionId=" << sessionId
+            << "[Room] Player left: roomId=" << roomId_
+            << ", playerId=" << playerId
             << ", activePlayers=" << GetPlayerCount() << '\n';
     }
 
@@ -142,7 +155,7 @@ namespace cna::server
 
         // 갱신한 플레이어의 축 별 속도 값을 로그로 출력
         std::cout
-            << "[Room] Player velocity updated: roomId=" << id_
+            << "[Room] Player velocity updated: roomId=" << roomId_
             << ", sessionId=" << sessionId
             << ", velocityX=" << state.velocityX
             << ", velocityY=" << state.velocityY
@@ -200,5 +213,28 @@ namespace cna::server
     std::size_t Room::GetPlayerCount() const noexcept
     {
         return players_.size();
+    }
+
+    std::optional<cna::PlayerId> Room::GeneratePlayerId() noexcept
+    {
+        // ID 공간을 모두 소진한 상태인 경우
+        if (nextPlayerId_ == 0)
+        {
+            return std::nullopt;
+        }
+
+        const cna::PlayerId playerId = nextPlayerId_;
+
+        // 마지막 유효 ID 발급 후 값을 0을 유지
+        if (nextPlayerId_ == std::numeric_limits<cna::PlayerId>::max())
+        {
+            nextPlayerId_ = 0;
+        }
+        else
+        {
+            ++nextPlayerId_;
+        }
+
+        return playerId;
     }
 }

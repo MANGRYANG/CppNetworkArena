@@ -172,7 +172,7 @@ namespace cna::server
         }
 
         // 생성된 기본 Room의 ID 보관
-        defaultRoomId_ = defaultRoom->GetId();
+        defaultRoomId_ = defaultRoom->GetRoomId();
 
         // 기본 Room 생성 결과 출력
         std::cout << "[Server] Default room created: roomId=" << defaultRoomId_ << '\n';
@@ -202,7 +202,7 @@ namespace cna::server
         }
 
         // 세션을 기반으로 한 플레이어를 기본 Room에 등록
-        return defaultRoom->Enter(std::move(session));
+        return defaultRoom->Enter(std::move(session)).has_value();
     }
 
     void Server::LeaveDefaultRoom(const SessionId sessionId)
@@ -247,7 +247,7 @@ namespace cna::server
         if (!defaultRoom->ApplyPlayerInput(sessionId, input))
         {
             std::cerr
-                << "[Server] Failed to apply PlayerInput: roomId=" << defaultRoom->GetId()
+                << "[Server] Failed to apply PlayerInput: roomId=" << defaultRoom->GetRoomId()
                 << ", sessionId=" << sessionId
                 << '\n';
         }
