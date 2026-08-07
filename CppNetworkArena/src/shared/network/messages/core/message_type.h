@@ -20,7 +20,10 @@ namespace cna::network
         PlayerInput = 3,
 
         // 서버가 클라이언트로 전송하는 Room의 게임 상태 스냅샷
-        WorldStateSnapshot = 4
+        WorldStateSnapshot = 4,
+
+        // 서버가 클라이언트에 통지하는 플레이어 식별 정보
+        PlayerIdentity = 5
     };
 
     // MessageType을 네트워크 헤더에 저장할 정수 값으로 변환하는 인라인 함수

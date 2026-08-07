@@ -39,6 +39,7 @@ target_sources(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/messages/core/message_codec.h
         ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/messages/payloads/player_input_message.h
         ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/messages/payloads/world_state_snapshot_message.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/network/messages/payloads/player_identity_message.h
 )
 
 # ---------------------------------------------------------------------------------------------

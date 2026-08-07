@@ -4,12 +4,17 @@
 
 #include "session.h"
 
+#include <network/messages/payloads/player_identity_message.h>
+
 #include <boost/asio/error.hpp>
 #include <boost/asio/socket_base.hpp>
 
+#include <array>
 #include <chrono>
+#include <cstddef>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <utility>
 
 namespace
@@ -201,8 +206,44 @@ namespace cna::server
             return false;
         }
 
-        // 세션을 기반으로 한 플레이어를 기본 Room에 등록
-        return defaultRoom->Enter(std::move(session)).has_value();
+        const SessionId sessionId = session->GetId();
+
+        // 플레이어를 등록하고 서버가 발급한 플레이어 ID 획득
+        const std::optional<cna::PlayerId> playerId = defaultRoom->Enter(session);
+
+        // 플레이어 등록 또는 플레이어 ID 발급에 실패한 경우
+        if (!playerId)
+        {
+            return false;
+        }
+
+        const cna::network::PlayerIdentityPayload identity
+        {
+            defaultRoom->GetRoomId(),
+            *playerId
+        };
+
+        std::array<std::byte, cna::network::PlayerIdentityPayloadSize> identityPayload{};
+
+        // 등록된 플레이어의 식별 정보를 클라이언트에 전송하기 위해 직렬화
+        if (!cna::network::EncodePlayerIdentityPayload(identity, identityPayload))
+        {
+            // 직렬화에 실패한 경우 플레이어 퇴장 처리
+            defaultRoom->Leave(sessionId);
+
+            return false;
+        }
+
+        // 플레이어 식별 정보 전송
+        if (!session->Send(cna::network::MessageType::PlayerIdentity, identityPayload))
+        {
+            // 통지에 실패한 경우 플레이어 퇴장 처리
+            defaultRoom->Leave(sessionId);
+
+            return false;
+        }
+
+        return true;
     }
 
     void Server::LeaveDefaultRoom(const SessionId sessionId)
