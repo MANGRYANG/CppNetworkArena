@@ -104,7 +104,7 @@ namespace cna::server
             << ", playerId=" << playerIterator->second.GetPlayerId()
             << ", activePlayers=" << GetPlayerCount() << '\n';
 
-        return true;
+        return playerId;
     }
 
     void Room::Leave(const SessionId sessionId)
