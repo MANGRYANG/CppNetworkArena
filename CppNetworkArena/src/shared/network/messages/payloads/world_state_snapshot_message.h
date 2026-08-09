@@ -114,22 +114,22 @@ namespace cna::network
             offset += sizeof(std::uint32_t);
 
             WriteFloat32(payload, offset, state.positionX);
-            offset += sizeof(std::uint32_t);
+            offset += sizeof(float);
 
             WriteFloat32(payload, offset, state.positionY);
-            offset += sizeof(std::uint32_t);
+            offset += sizeof(float);
 
             WriteFloat32(payload, offset, state.positionZ);
-            offset += sizeof(std::uint32_t);
+            offset += sizeof(float);
 
             WriteFloat32(payload, offset, state.velocityX);
-            offset += sizeof(std::uint32_t);
+            offset += sizeof(float);
 
             WriteFloat32(payload, offset, state.velocityY);
-            offset += sizeof(std::uint32_t);
+            offset += sizeof(float);
 
             WriteFloat32(payload, offset, state.velocityZ);
-            offset += sizeof(std::uint32_t);
+            offset += sizeof(float);
         }
 
         return true;

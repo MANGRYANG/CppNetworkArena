@@ -5,6 +5,7 @@
 #include "session.h"
 
 #include <network/messages/payloads/player_identity_message.h>
+#include <network/messages/payloads/world_state_snapshot_message.h>
 
 #include <boost/asio/error.hpp>
 #include <boost/asio/socket_base.hpp>
@@ -16,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -392,6 +394,25 @@ namespace cna::server
 
         // 기본 Room의 게임 상태 갱신
         defaultRoom->Tick(deltaSeconds);
+
+        // 갱신된 Room의 현재 상태 스냅샷 생성
+        const cna::network::WorldStateSnapshot snapshot = defaultRoom->CaptureSnapshot();
+
+        std::vector<std::byte> payload;
+
+        // 스냅샷 Payload 직렬화에 실패한 경우 현재 Tick의 Broadcast 생략
+        if (!cna::network::EncodeWorldStateSnapshotPayload(snapshot, payload))
+        {
+            std::cerr
+                << "[Server] Failed to encode WorldStateSnapshot: roomId="
+                << defaultRoom->GetRoomId()
+                << '\n';
+
+            return;
+        }
+
+        // Room에 등록된 모든 활성 세션에 최신 월드 상태 전송
+        defaultRoom->Broadcast(cna::network::MessageType::WorldStateSnapshot, payload);
     }
 
     void Server::Stop()

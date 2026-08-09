@@ -4,6 +4,7 @@
 #include <network/messages/core/message_type.h>
 
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <span>

@@ -4,6 +4,7 @@
 
 #include <network/messages/payloads/player_input_message.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <iostream>
@@ -183,6 +184,48 @@ namespace cna::server
             state.positionY += state.velocityY * deltaSeconds;
             state.positionZ += state.velocityZ * deltaSeconds;
         }
+    }
+
+    cna::network::WorldStateSnapshot Room::CaptureSnapshot() const
+    {
+        // 현재 Room의 게임 상태 스냅샷
+        cna::network::WorldStateSnapshot snapshot;
+        snapshot.roomId = roomId_;
+        snapshot.players.reserve(players_.size());
+
+        // Room에 등록된 모든 플레이어의 현재 상태를 스냅샷에 추가
+        for (const auto& playerEntry : players_)
+        {
+            const Player& player = playerEntry.second;
+            const PlayerState& state = player.GetState();
+
+            snapshot.players.push_back
+            (
+                cna::network::PlayerStateSnapshot
+                {
+                    player.GetPlayerId(),
+                    state.positionX,
+                    state.positionY,
+                    state.positionZ,
+                    state.velocityX,
+                    state.velocityY,
+                    state.velocityZ
+                }
+            );
+        }
+
+        // unordered_map 순회 순서와 무관하게 플레이어 ID 기준으로 정렬
+        std::sort
+        (
+            snapshot.players.begin(),
+            snapshot.players.end(),
+            [](const auto& left, const auto& right)
+            {
+                return left.playerId < right.playerId;
+            }
+        );
+
+        return snapshot;
     }
 
     void Room::Broadcast(const cna::network::MessageType type, const std::span<const std::byte> payload)
