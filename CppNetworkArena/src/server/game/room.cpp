@@ -154,15 +154,6 @@ namespace cna::server
         state.velocityY = normalizedInput.moveY * PlayerMoveSpeed;
         state.velocityZ = normalizedInput.moveZ * PlayerMoveSpeed;
 
-        // 갱신한 플레이어의 축 별 속도 값을 로그로 출력
-        std::cout
-            << "[Room] Player velocity updated: roomId=" << roomId_
-            << ", sessionId=" << sessionId
-            << ", velocityX=" << state.velocityX
-            << ", velocityY=" << state.velocityY
-            << ", velocityZ=" << state.velocityZ
-            << '\n';
-
         return true;
     }
 
@@ -230,6 +221,10 @@ namespace cna::server
 
     void Room::Broadcast(const cna::network::MessageType type, const std::span<const std::byte> payload)
     {
+        // 송신 실패 세션을 순회가 끝난 뒤 종료하도록 설정하여 반복자 무효화 방지
+        std::vector<std::shared_ptr<Session>> failedSessions;
+        failedSessions.reserve(players_.size());
+
         // Room에 등록된 플레이어 목록을 순회
         auto playerIterator = players_.begin();
 
@@ -247,9 +242,19 @@ namespace cna::server
             }
 
             // 활성 세션에게 메시지 전송
-            session->Send(type, payload);
+            if (!session->Send(type, payload))
+            {
+                // 전송 실패 시 송신 실패 세션 목록에 추가
+                failedSessions.push_back(session);
+            }
 
             ++playerIterator;
+        }
+
+        // 순회 완료 후 송신 실패 세션 일괄 종료
+        for (const std::shared_ptr<Session>& session : failedSessions)
+        {
+            session->Stop();
         }
     }
 
