@@ -31,11 +31,10 @@ namespace cna::network
     // 네트워크 바이트 순서로 저장된 32비트 정수를 호스트 값으로 변환하는 인라인 함수
     inline std::uint32_t ReadUint32(const std::span<const std::byte> data, const std::size_t offset)
     {
-        const std::uint16_t byte0 = std::to_integer<std::uint16_t>(data[offset]);
-        const std::uint16_t byte1 = std::to_integer<std::uint16_t>(data[offset + 1]);
-        const std::uint16_t byte2 = std::to_integer<std::uint16_t>(data[offset + 2]);
-        const std::uint16_t byte3 = std::to_integer<std::uint16_t>(data[offset + 3]);
-
+        const std::uint32_t byte0 = std::to_integer<std::uint32_t>(data[offset]);
+        const std::uint32_t byte1 = std::to_integer<std::uint32_t>(data[offset + 1]);
+        const std::uint32_t byte2 = std::to_integer<std::uint32_t>(data[offset + 2]);
+        const std::uint32_t byte3 = std::to_integer<std::uint32_t>(data[offset + 3]);
 
         return (byte0 << 24) | (byte1 << 16) | (byte2 << 8) | byte3;
     }

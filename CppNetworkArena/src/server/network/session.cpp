@@ -91,11 +91,30 @@ namespace cna::server
             return false;
         }
 
+        // 데이터 수신이 느린 클라이언트로 인해 송신 큐가 과도하게 증가하지 않도록 상한 검사
+        if ((pendingSendBytes_ > MaxPendingSendBytes) || (message.size() > MaxPendingSendBytes - pendingSendBytes_))
+        {
+            std::cerr
+                << "[Session] Send queue limit exceeded: endpoint=" << remoteEndpoint_
+                << ", pending=" << pendingSendBytes_
+                << ", next=" << message.size()
+                << ", limit=" << MaxPendingSendBytes
+                << '\n';
+
+            return false;
+        }
+
         // 기존 송신 작업이 진행 중인지 확인
         const bool writeInProgress = !sendQueue_.empty();
 
+        // 직렬화된 메시지 바이트 크기 계산
+        const std::size_t messageSize = message.size();
+
         // 전송할 메시지를 큐에 추가
         sendQueue_.push(std::move(message));
+
+        // 송신 중이거나 대기 중인 전체 바이트 수 갱신
+        pendingSendBytes_ += messageSize;
 
         // 진행 중인 송신 작업이 없는 경우 첫 메시지 송신 작업 등록
         if (!writeInProgress)
@@ -405,6 +424,7 @@ namespace cna::server
 
             // 메시지 큐 비우기
             sendQueue_ = std::queue<std::vector<std::byte>>{};
+            pendingSendBytes_ = 0;
 
             // 클라이언트 소켓 종료
             if (socket_.is_open())
@@ -418,6 +438,11 @@ namespace cna::server
         // 비동기 쓰기 작업 중 연결 종료로 인해 큐가 비워진 경우
         if (sendQueue_.empty())
         {
+            pendingSendBytes_ = 0;
+
+            // 클라이언트 소켓 종료
+            Close();
+
             return;
         }
 
@@ -435,12 +460,35 @@ namespace cna::server
 
             // 메시지 큐 비우기
             sendQueue_ = std::queue<std::vector<std::byte>>{};
+            pendingSendBytes_ = 0;
 
             // 클라이언트 소켓 종료
             Close();
 
             return;
         }
+
+        // 송신 바이트 수가 큐 상태와 일치하지 않는 경우
+        if (pendingSendBytes_ < expectedBytes)
+        {
+            std::cerr
+                << "[Session] Pending send byte count invalid: endpoint=" << remoteEndpoint_
+                << ", pending=" << pendingSendBytes_
+                << ", completed=" << expectedBytes
+                << '\n';
+
+            // 메시지 큐 비우기
+            sendQueue_ = std::queue<std::vector<std::byte>>{};
+            pendingSendBytes_ = 0;
+
+            // 클라이언트 소켓 종료
+            Close();
+
+            return;
+        }
+
+        // 송신이 완료된 메시지 크기를 대기 바이트 수에서 제거
+        pendingSendBytes_ -= expectedBytes;
 
         // 송신이 완료된 첫 번째 메시지를 큐에서 제거
         sendQueue_.pop();
@@ -450,6 +498,9 @@ namespace cna::server
         {
             WriteNext();
         }
+
+        // 모든 송신이 완료된 경우 바이트 수도 빈 상태로 설정
+        pendingSendBytes_ = 0;
     }
 
     void Session::Close()
@@ -461,6 +512,9 @@ namespace cna::server
         }
 
         closed_ = true;
+
+        // 종료 이후에는 대기 송신 바이트가 없는 상태로 초기화
+        pendingSendBytes_ = 0;
 
         // 클라이언트 소켓이 이미 닫혀 있는 경우
         if (!socket_.is_open())

@@ -51,17 +51,24 @@ namespace cna::network
             return false;
         }
 
-        input.moveX = std::bit_cast<std::int16_t>(ReadUint16(payload, 0));
-        input.moveY = std::bit_cast<std::int16_t>(ReadUint16(payload, sizeof(std::int16_t)));
-        input.moveZ = std::bit_cast<std::int16_t>(ReadUint16(payload, sizeof(std::int16_t) * 2));
+        // 역직렬화 작업이 끝나기 전까지 출력 객체를 변경하지 않기 위한 임시 객체
+        PlayerInputPayload decodedInput;
+
+        decodedInput.moveX = std::bit_cast<std::int16_t>(ReadUint16(payload, 0));
+        decodedInput.moveY = std::bit_cast<std::int16_t>(ReadUint16(payload, sizeof(std::int16_t)));
+        decodedInput.moveZ = std::bit_cast<std::int16_t>(ReadUint16(payload, sizeof(std::int16_t) * 2));
 
         // 플레이어 입력이 허용 세기 범위를 벗어난 경우
-        if (!IsValidPlayerInputAxisRawValue(input.moveX) ||
-            !IsValidPlayerInputAxisRawValue(input.moveY) ||
-            !IsValidPlayerInputAxisRawValue(input.moveZ))
+        if (!IsValidPlayerInputAxisRawValue(decodedInput.moveX) ||
+            !IsValidPlayerInputAxisRawValue(decodedInput.moveY) ||
+            !IsValidPlayerInputAxisRawValue(decodedInput.moveZ))
         {
             return false;
         }
+
+        input = decodedInput;
+
+        return true;
 
         return true;
     }

@@ -55,6 +55,9 @@ namespace cna::server
         // 한 번의 비동기 수신에서 사용할 버퍼 크기
         static constexpr std::size_t ReceiveBufferSize = 1024;
 
+        // 클라이언트 한 명이 점유할 수 있는 최대 송신 대기 바이트 수 (256 KiB)
+        static constexpr std::size_t MaxPendingSendBytes = 256 * 1024;
+
         // 연결된 클라이언트의 엔드포인트 정보를 가져오는 함수
         void CacheRemoteEndpoint();
 
@@ -111,6 +114,9 @@ namespace cna::server
 
         // 서버가 전송할 메시지를 보관하는 메시지 큐
         std::queue<std::vector<std::byte>> sendQueue_;
+
+        // 현재 송신 중이거나 송신 대기 중인 전체 바이트 수
+        std::size_t pendingSendBytes_ = 0;
 
         // 로그 출력에 사용할 클라이언트 엔드포인트 정보
         std::string remoteEndpoint_ = "unknown";
