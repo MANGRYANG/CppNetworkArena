@@ -2,7 +2,7 @@
 
 #include "session_types.h"
 
-#include <network/message_header.h>
+#include <network/messages/core/message_header.h>
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/system/error_code.hpp>
@@ -21,7 +21,13 @@ namespace cna::server
     class Session final : public std::enable_shared_from_this<Session>  // CRTP
     {
     public:
-        explicit Session(SessionId id, boost::asio::ip::tcp::socket socket, SessionClosedCallback onClosed);
+        explicit Session
+        (
+            SessionId id,
+            boost::asio::ip::tcp::socket socket,
+            SessionClosedCallback onClosed,
+            PlayerInputCallback onPlayerInput
+        );
 
         // 복사 생성자 및 복사 대입 연산자 삭제
         Session(const Session&) = delete;
@@ -40,11 +46,17 @@ namespace cna::server
         // 세션 고유 ID 반환
         SessionId GetId() const noexcept;
 
+        // 메시지를 직렬화하여 송신 큐에 등록하는 함수
+        bool Send(cna::network::MessageType type, std::span<const std::byte> payload);
+
     private:
         using Tcp = boost::asio::ip::tcp;
 
         // 한 번의 비동기 수신에서 사용할 버퍼 크기
         static constexpr std::size_t ReceiveBufferSize = 1024;
+
+        // 클라이언트 한 명이 점유할 수 있는 최대 송신 대기 바이트 수 (256 KiB)
+        static constexpr std::size_t MaxPendingSendBytes = 256 * 1024;
 
         // 연결된 클라이언트의 엔드포인트 정보를 가져오는 함수
         void CacheRemoteEndpoint();
@@ -67,8 +79,8 @@ namespace cna::server
         // 테스트 요청 메시지 전용 핸들러 함수
         bool HandleTestRequest(std::span<const std::byte> payload);
 
-        // 메시지를 직렬화하여 송신 큐에 등록하는 함수
-        bool Send(cna::network::MessageType type, std::span<const std::byte> payload);
+        // 플레이어 입력 메시지 전용 핸들러 함수
+        bool HandlePlayerInput(std::span<const std::byte> payload);
 
         // 다음 비동기 메시지 송신 작업을 등록하는 함수
         void WriteNext();
@@ -88,6 +100,9 @@ namespace cna::server
         // 세션 종료 시 호출할 콜백
         SessionClosedCallback onClosed_;
 
+        // 플레이어 입력 수신 시 호출할 콜백
+        PlayerInputCallback onPlayerInput_;
+
         // Close() 함수 중복 호출을 방지하기 위한 상태 값
         bool closed_ = false;
 
@@ -99,6 +114,9 @@ namespace cna::server
 
         // 서버가 전송할 메시지를 보관하는 메시지 큐
         std::queue<std::vector<std::byte>> sendQueue_;
+
+        // 현재 송신 중이거나 송신 대기 중인 전체 바이트 수
+        std::size_t pendingSendBytes_ = 0;
 
         // 로그 출력에 사용할 클라이언트 엔드포인트 정보
         std::string remoteEndpoint_ = "unknown";

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <network/message_type.h>
+#include <network/messages/core/message_type.h>
 
 #include <array>
 #include <cstddef>

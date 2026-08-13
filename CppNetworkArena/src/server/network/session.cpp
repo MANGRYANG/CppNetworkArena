@@ -1,6 +1,7 @@
 #include "session.h"
 
-#include <network/message_codec.h>
+#include <network/messages/core/message_codec.h>
+#include <network/messages/payloads/player_input_message.h>
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/error.hpp>
@@ -11,8 +12,8 @@
 
 namespace cna::server
 {
-    Session::Session(const SessionId id, Tcp::socket socket, SessionClosedCallback onClosed)
-        : id_(id), socket_(std::move(socket)), onClosed_(std::move(onClosed))
+    Session::Session(SessionId id, boost::asio::ip::tcp::socket socket, SessionClosedCallback onClosed, PlayerInputCallback onPlayerInput)
+        : id_(id), socket_(std::move(socket)), onClosed_(std::move(onClosed)), onPlayerInput_(std::move(onPlayerInput))
     {
     }
 
@@ -45,6 +46,83 @@ namespace cna::server
     SessionId Session::GetId() const noexcept
     {
         return id_;
+    }
+
+    bool Session::Send(cna::network::MessageType type, std::span<const std::byte> payload)
+    {
+        // 이미 종료된 세션인지 확인
+        if (closed_)
+        {
+            return false;
+        }
+
+        // 클라이언트 소켓이 이미 닫혀 있는 경우
+        if (!socket_.is_open())
+        {
+            return false;
+        }
+
+        // 서버가 클라이언트로 전송할 수 있는 메시지 타입인지 확인
+        switch (type)
+        {
+        case cna::network::MessageType::TestResponse:
+        case cna::network::MessageType::WorldStateSnapshot:
+        case cna::network::MessageType::PlayerIdentity:
+            break;
+        case cna::network::MessageType::Unknown:
+        case cna::network::MessageType::TestRequest:
+        case cna::network::MessageType::PlayerInput:
+        default:
+            std::cerr
+                << "[Session] Non-sendable message type to " << remoteEndpoint_
+                << ": " << cna::network::MessageTypeValue(type)
+                << '\n';
+            return false;
+        }
+
+        // 직렬화된 메시지를 담을 송신 버퍼
+        std::vector<std::byte> message;
+
+        // 메시지 직렬화에 실패한 경우 전송 중단
+        if (!cna::network::EncodeMessage(type, payload, message))
+        {
+            std::cerr << "[Session] Failed to encode message to " << remoteEndpoint_ << '\n';
+
+            return false;
+        }
+
+        // 데이터 수신이 느린 클라이언트로 인해 송신 큐가 과도하게 증가하지 않도록 상한 검사
+        if ((pendingSendBytes_ > MaxPendingSendBytes) || (message.size() > MaxPendingSendBytes - pendingSendBytes_))
+        {
+            std::cerr
+                << "[Session] Send queue limit exceeded: endpoint=" << remoteEndpoint_
+                << ", pending=" << pendingSendBytes_
+                << ", next=" << message.size()
+                << ", limit=" << MaxPendingSendBytes
+                << '\n';
+
+            return false;
+        }
+
+        // 기존 송신 작업이 진행 중인지 확인
+        const bool writeInProgress = !sendQueue_.empty();
+
+        // 직렬화된 메시지 바이트 크기 계산
+        const std::size_t messageSize = message.size();
+
+        // 전송할 메시지를 큐에 추가
+        sendQueue_.push(std::move(message));
+
+        // 송신 중이거나 대기 중인 전체 바이트 수 갱신
+        pendingSendBytes_ += messageSize;
+
+        // 진행 중인 송신 작업이 없는 경우 첫 메시지 송신 작업 등록
+        if (!writeInProgress)
+        {
+            WriteNext();
+        }
+
+        return true;
     }
 
     void Session::CacheRemoteEndpoint()
@@ -239,8 +317,13 @@ namespace cna::server
         case cna::network::MessageType::TestRequest:
             return HandleTestRequest(payload);
 
+        case cna::network::MessageType::PlayerInput:
+            return HandlePlayerInput(payload);
+
         case cna::network::MessageType::Unknown:
         case cna::network::MessageType::TestResponse:
+        case cna::network::MessageType::WorldStateSnapshot:
+        case cna::network::MessageType::PlayerIdentity:
         default:
             std::cerr
                 << "[Session] Unsupported message type from " << remoteEndpoint_
@@ -264,56 +347,27 @@ namespace cna::server
         return Send(cna::network::MessageType::TestResponse, payload);
     }
 
-    bool Session::Send(cna::network::MessageType type, std::span<const std::byte> payload)
+    bool Session::HandlePlayerInput(std::span<const std::byte> payload)
     {
-        // 이미 종료된 세션인지 확인
-        if (closed_)
-        {
-            return false;
-        }
+        cna::network::PlayerInputPayload input;
 
-        // 클라이언트 소켓이 이미 닫혀 있는 경우
-        if (!socket_.is_open())
+        // PlayerInput Payload 역직렬화에 실패한 경우 연결 종료
+        if (!cna::network::DecodePlayerInputPayload(payload, input))
         {
-            return false;
-        }
-
-        // 서버가 클라이언트로 전송할 수 있는 메시지 타입인지 확인
-        switch (type)
-        {
-        case cna::network::MessageType::TestResponse:
-            break;
-        case cna::network::MessageType::Unknown:
-        case cna::network::MessageType::TestRequest:
-        default:
             std::cerr
-                << "[Session] Non-sendable message type to " << remoteEndpoint_
-                << ": " << cna::network::MessageTypeValue(type)
+                << "[Session] Invalid PlayerInput payload from " << remoteEndpoint_
+                << ": payload=" << payload.size()
                 << '\n';
-            return false;
-        }
 
-        // 직렬화된 메시지를 담을 송신 버퍼
-        std::vector<std::byte> message;
-
-        // 메시지 직렬화에 실패한 경우 전송 중단
-        if(!cna::network::EncodeMessage(type, payload, message))
-        {
-            std::cerr << "[Session] Failed to encode message to " << remoteEndpoint_ << '\n';
+            Close();
 
             return false;
         }
 
-        // 기존 송신 작업이 진행 중인지 확인
-        const bool writeInProgress = !sendQueue_.empty();
-
-        // 전송할 메시지를 큐에 추가
-        sendQueue_.push(std::move(message));
-
-        // 진행 중인 송신 작업이 없는 경우 첫 메시지 송신 작업 등록
-        if (!writeInProgress)
+        // 플레이어 입력을 서버로 전달
+        if (onPlayerInput_)
         {
-            WriteNext();
+            onPlayerInput_(id_, input);
         }
 
         return true;
@@ -370,6 +424,7 @@ namespace cna::server
 
             // 메시지 큐 비우기
             sendQueue_ = std::queue<std::vector<std::byte>>{};
+            pendingSendBytes_ = 0;
 
             // 클라이언트 소켓 종료
             if (socket_.is_open())
@@ -383,6 +438,11 @@ namespace cna::server
         // 비동기 쓰기 작업 중 연결 종료로 인해 큐가 비워진 경우
         if (sendQueue_.empty())
         {
+            pendingSendBytes_ = 0;
+
+            // 클라이언트 소켓 종료
+            Close();
+
             return;
         }
 
@@ -400,12 +460,35 @@ namespace cna::server
 
             // 메시지 큐 비우기
             sendQueue_ = std::queue<std::vector<std::byte>>{};
+            pendingSendBytes_ = 0;
 
             // 클라이언트 소켓 종료
             Close();
 
             return;
         }
+
+        // 송신 바이트 수가 큐 상태와 일치하지 않는 경우
+        if (pendingSendBytes_ < expectedBytes)
+        {
+            std::cerr
+                << "[Session] Pending send byte count invalid: endpoint=" << remoteEndpoint_
+                << ", pending=" << pendingSendBytes_
+                << ", completed=" << expectedBytes
+                << '\n';
+
+            // 메시지 큐 비우기
+            sendQueue_ = std::queue<std::vector<std::byte>>{};
+            pendingSendBytes_ = 0;
+
+            // 클라이언트 소켓 종료
+            Close();
+
+            return;
+        }
+
+        // 송신이 완료된 메시지 크기를 대기 바이트 수에서 제거
+        pendingSendBytes_ -= expectedBytes;
 
         // 송신이 완료된 첫 번째 메시지를 큐에서 제거
         sendQueue_.pop();
@@ -415,6 +498,9 @@ namespace cna::server
         {
             WriteNext();
         }
+
+        // 모든 송신이 완료된 경우 바이트 수도 빈 상태로 설정
+        pendingSendBytes_ = 0;
     }
 
     void Session::Close()
@@ -426,6 +512,9 @@ namespace cna::server
         }
 
         closed_ = true;
+
+        // 종료 이후에는 대기 송신 바이트가 없는 상태로 초기화
+        pendingSendBytes_ = 0;
 
         // 클라이언트 소켓이 이미 닫혀 있는 경우
         if (!socket_.is_open())

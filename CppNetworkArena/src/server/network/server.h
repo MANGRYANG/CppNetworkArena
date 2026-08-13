@@ -1,14 +1,24 @@
 #pragma once
 
+#include "../game/room_manager.h"
+
 #include "session_manager.h"
+
+#include <NetworkTypes.h>
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/steady_timer.hpp>
 
+#include <chrono>
 #include <cstdint>
+#include <memory>
+#include <network/messages/payloads/player_input_message.h>
 
 namespace cna::server
 {
+    class Session;
+
     // 비동기 TCP 서버 클래스
     class Server final
     {
@@ -42,11 +52,47 @@ namespace cna::server
         // 클라이언트 연결 수락 완료 시 호출되는 핸들러 함수
         void HandleAccept(const boost::system::error_code& error, Tcp::socket socket);
 
+        // 기본으로 사용할 Room을 생성하는 함수
+        void CreateDefaultRoom();
+
+        // 생성된 세션을 기반으로 하는 플레이어를 기본 Room에 입장시키는 함수
+        bool EnterDefaultRoom(std::shared_ptr<Session> session);
+
+        // 종료된 세션을 기반으로 하는 플레이어를 기본 Room에서 퇴장시키는 함수
+        void LeaveDefaultRoom(SessionId sessionId);
+
+        // 세션이 수신한 플레이어 입력을 전달받는 함수
+        void HandlePlayerInput(SessionId sessionId, const cna::network::PlayerInputPayload& input);
+
+        // 서버 Tick 루프를 시작하는 함수
+        void StartTickLoop();
+
+        // 다음 서버 Tick 실행을 예약하는 함수
+        void ScheduleNextTick();
+
+        // 서버 Tick 타이머 완료 시 호출되는 함수
+        void HandleTick(const boost::system::error_code& error);
+
+        // 기본 Room의 게임 상태를 지정한 시간만큼 진행하는 함수
+        void TickDefaultRoom(float deltaSeconds);
+
         // 네트워크 수신을 담당하는 비동기 Acceptor 객체
         Tcp::acceptor acceptor_;
 
+        // 서버 게임 Tick을 일정 간격으로 실행하기 위한 타이머
+        boost::asio::steady_timer tickTimer_;
+
+        // 마지막 서버 Tick이 실행된 시간
+        std::chrono::steady_clock::time_point lastTickTime_;
+
         // 활성 클라이언트 세션 관리자
         SessionManager sessionManager_;
+
+        // 서버에서 사용할 Room 관리자 객체
+        RoomManager roomManager_;
+
+        // 클라이언트를 배치할 Room의 기본 ID
+        cna::RoomId defaultRoomId_ = 0;
 
         // 서버 종료 요청이 처리되었는지 나타내는 상태 값
         bool stopped_ = false;
