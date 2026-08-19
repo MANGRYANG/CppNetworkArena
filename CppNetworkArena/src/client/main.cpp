@@ -1,10 +1,13 @@
 #include "network/network_client.h"
 
+#include <boost/asio/error.hpp>
 #include <boost/asio/io_context.hpp>
 
+#include <cstdint>
 #include <exception>
 #include <iostream>
 #include <memory>
+#include <string_view>
 
 int main(void)
 {
@@ -33,8 +36,7 @@ int main(void)
         (
             targetHost,
             targetPort,
-            [weakClient = std::weak_ptr<cna::client::NetworkClient>(networkClient), &exitCode]
-            (const boost::asio::ip::tcp::endpoint& endpoint)
+            [&exitCode](const boost::asio::ip::tcp::endpoint& endpoint)
             {
                 // 서버 연결 성공 메시지 출력
                 std::cout
@@ -45,12 +47,6 @@ int main(void)
 
                 // 연결에 성공하였으므로 종료 코드를 0으로 설정
                 exitCode = 0;
-
-                // 서버 연결을 확인한 뒤 연결 해제
-                if (const std::shared_ptr<cna::client::NetworkClient> client = weakClient.lock())
-                {
-                    client->Disconnect();
-                }
             },
             [&exitCode](const boost::system::error_code& error)
             {
@@ -61,6 +57,26 @@ int main(void)
                     << '\n';
 
                 // 연결에 실패하였으므로 종료 코드를 1로 설정
+                exitCode = 1;
+            },
+            [&exitCode](const boost::system::error_code& error)
+            {
+                // 서버가 연결을 정상적으로 종료한 경우
+                if (error == boost::asio::error::eof)
+                {
+                    std::cout << "[NetworkClient] Server disconnected.\n";
+
+                    exitCode = 0;
+
+                    return;
+                }
+
+                // 오류가 발생하여 종료된 경우
+                std::cerr
+                    << "[NetworkClient] Connection terminated: "
+                    << error.message()
+                    << '\n';
+
                 exitCode = 1;
             }
         );

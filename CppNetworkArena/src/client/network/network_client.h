@@ -1,13 +1,19 @@
 #pragma once
 
+#include <network/messages/core/message_header.h>
+
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/system/error_code.hpp>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <string>
+#include <span>
+#include <string_view>
+#include <vector>
 
 namespace cna::client
 {
@@ -29,6 +35,9 @@ namespace cna::client
         // 연결 실패 시 호출할 콜백 시그니처
         using ConnectionFailedCallback = std::function<void(const boost::system::error_code&)>;
 
+        // 연결된 서버와의 통신이 예기치 않게 종료된 경우 호출할 콜백 시그니처
+        using DisconnectedCallback = std::function<void(const boost::system::error_code&)>;
+
         explicit NetworkClient(boost::asio::io_context& ioContext);
         ~NetworkClient();
 
@@ -46,7 +55,8 @@ namespace cna::client
             std::string_view host,
             std::uint16_t port,
             ConnectedCallback onConnected,
-            ConnectionFailedCallback onConnectionFailed
+            ConnectionFailedCallback onConnectionFailed,
+            DisconnectedCallback onDisconnected
         );
 
         // 진행 중인 연결 작업을 취소하거나 연결된 소켓을 종료하는 함수
@@ -60,6 +70,15 @@ namespace cna::client
 
     private:
         using Tcp = boost::asio::ip::tcp;
+
+        // 한 번의 비동기 수신에 사용할 임시 버퍼 크기
+        static constexpr std::size_t ReceiveBufferSize = 1024;
+
+        // 현재 연결 세대 및 클라이언트 연결 상태가 일치하는지 검증하는 내부 헬퍼
+        bool IsCurrentOperation(std::uint64_t connectionGeneration, ConnectionState expectedState) const noexcept;
+
+        // 현재 연결 세대가 일치하는지 검증하는 내부 헬퍼
+        bool IsCurrentOperation(std::uint64_t connectionGeneration) const noexcept;
 
         // 비동기 호스트 해석 결과 처리
         void HandleResolve
@@ -77,12 +96,55 @@ namespace cna::client
             std::uint64_t connectionGeneration
         );
 
+        // 다음 비동기 수신 작업을 등록하는 함수
+        void ReadNext(std::uint64_t connectionGeneration);
+
+        // 비동기 수신 결과 처리 함수
+        void HandleRead
+        (
+            const boost::system::error_code& error,
+            std::size_t bytesTransferred,
+            std::uint64_t connectionGeneration
+        );
+
+        // 새로 수신한 데이터를 누적 버퍼에 추가하고 메시지 단위로 처리하는 함수
+        bool ProcessReceivedData
+        (
+            std::size_t bytesTransferred,
+            std::uint64_t connectionGeneration
+        );
+
+        // 누적 버퍼에서 완전한 메시지를 반복적으로 분리하는 함수
+        bool ProcessMessages(std::uint64_t connectionGeneration);
+
+        // 메시지 타입에 따라 전용 핸들러 함수를 호출하는 디스패치 함수
+        bool DispatchMessage(const cna::network::MessageHeader& header, std::span<const std::byte> payload);
+
+        // 테스트 요청 메시지 전용 핸들러 함수
+        bool HandleTestResponse(std::span<const std::byte> payload);
+
+        // 플레이어 식별 정보 메시지 전용 핸들러 함수
+        bool HandlePlayerIdentity(std::span<const std::byte> payload);
+
+        // 월드 상태 스냅샷 메시지 전용 핸들러 함수
+        bool HandleWorldStateSnapshot(std::span<const std::byte> payload);
+
         // 연결 실패 상태를 정리한 뒤 실패 콜백 호출
         void CompleteConnectionFailure
         (
             const boost::system::error_code& error,
             std::uint64_t connectionGeneration
         );
+
+        // 연결 종료 상태를 정리한 뒤 종료 콜백 호출
+        void CompleteDisconnection
+        (
+            const boost::system::error_code& error,
+            std::uint64_t connectionGeneration
+        );
+
+        // 연결 상태와 자원 및 콜백을 초기화하는 함수
+        void ResetConnection();
 
         // 소켓에 등록된 작업을 취소하고 소켓 종료
         void CloseSocket() noexcept;
@@ -104,5 +166,14 @@ namespace cna::client
 
         // 서버 연결 실패 시 호출할 콜백
         ConnectionFailedCallback onConnectionFailed_;
+
+        // 연결된 서버와의 통신이 예기치 않게 종료된 경우 호출할 콜백
+        DisconnectedCallback onDisconnected_;
+
+        // 서버에서 받은 데이터를 임시로 저장하는 수신 버퍼
+        std::array<std::byte, ReceiveBufferSize> receiveBuffer_{};
+
+        // 여러 번 나뉘거나 합쳐져 수신된 TCP 데이터를 저장하는 누적 버퍼
+        std::vector<std::byte> accumulatedBuffer_;
     };
 }
