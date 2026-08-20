@@ -2,6 +2,7 @@
 
 #include <network/messages/core/message_codec.h>
 #include <network/messages/core/message_header.h>
+#include <network/messages/payloads/player_identity_message.h>
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/connect.hpp>
@@ -73,6 +74,9 @@ namespace cna::client
         // TCP 수신 데이터 누적 버퍼 초기화
         accumulatedBuffer_.clear();
 
+        // 새로운 연결에 이전 연결의 식별 정보가 남지 않도록 초기화
+        playerIdentity_.reset();
+
         // DNS 주소 해석 작업을 비동기 요청
         resolver_.async_resolve
         (
@@ -116,6 +120,26 @@ namespace cna::client
     bool NetworkClient::IsConnected() const noexcept
     {
         return connectionState_ == ConnectionState::Connected;
+    }
+
+    std::optional<cna::RoomId> NetworkClient::GetRoomId() const noexcept
+    {
+        if (!playerIdentity_)
+        {
+            return std::nullopt;
+        }
+
+        return playerIdentity_->roomId;
+    }
+
+    std::optional<cna::PlayerId> NetworkClient::GetPlayerId() const noexcept
+    {
+        if (!playerIdentity_)
+        {
+            return std::nullopt;
+        }
+
+        return playerIdentity_->playerId;
     }
 
     bool NetworkClient::IsCurrentOperation(std::uint64_t connectionGeneration, ConnectionState expectedState) const noexcept
@@ -375,14 +399,6 @@ namespace cna::client
 
     bool NetworkClient::DispatchMessage(const cna::network::MessageHeader& header, std::span<const std::byte> payload)
     {
-        // 수신된 메시지의 메타데이터 로깅
-        std::cout
-            << "[NetworkClient] Message received"
-            << ": type=" << cna::network::MessageTypeValue(header.type)
-            << ", size=" << header.size
-            << ", payload=" << payload.size()
-            << '\n';
-
         // 메시지 타입에 따라 전용 핸들러 함수 호출
         switch (header.type)
         {
@@ -421,10 +437,26 @@ namespace cna::client
 
     bool NetworkClient::HandlePlayerIdentity(std::span<const std::byte> payload)
     {
-        // 이후 세부 로직 구현 필요
+        cna::network::PlayerIdentityPayload identity;
+
+        // PlayerIdentity Payload 역직렬화 및 식별자 유효성 검사
+        if (!cna::network::DecodePlayerIdentityPayload(payload, identity))
+        {
+            std::cerr
+                << "[NetworkClient] Invalid PlayerIdentity payload"
+                << ": payload=" << payload.size()
+                << '\n';
+
+            return false;
+        }
+
+        // 검증이 완료된 현재 연결의 식별 정보 저장
+        playerIdentity_ = identity;
+
         std::cout
-            << "[NetworkClient] PlayerIdentity dispatched: payload="
-            << payload.size()
+            << "[NetworkClient] PlayerIdentity received"
+            << ": roomId=" << identity.roomId
+            << ", playerId=" << identity.playerId
             << '\n';
 
         return true;
@@ -458,6 +490,9 @@ namespace cna::client
 
         // 소켓 종료
         CloseSocket();
+
+        // 실패한 연결 시도의 식별 정보 초기화
+        playerIdentity_.reset();
 
         // 연결 실패 콜백 보관
         ConnectionFailedCallback connectionFailedCallback = std::move(onConnectionFailed_);
@@ -495,6 +530,9 @@ namespace cna::client
         // 종료된 연결에서 남은 수신 데이터 제거
         accumulatedBuffer_.clear();
 
+        // 종료된 연결에 할당됐던 식별 정보 초기화
+        playerIdentity_.reset();
+
         // 연결 종료 콜백 보관
         DisconnectedCallback disconnectedCallback = std::move(onDisconnected_);
 
@@ -521,6 +559,9 @@ namespace cna::client
 
         // TCP 수신 데이터 누적 버퍼 초기화
         accumulatedBuffer_.clear();
+
+        // 현재 연결에 할당된 식별 정보 초기화
+        playerIdentity_.reset();
 
         // 콜백 변수 초기화
         onConnected_ = {};

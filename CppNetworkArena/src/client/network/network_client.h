@@ -1,6 +1,7 @@
 #pragma once
 
 #include <network/messages/core/message_header.h>
+#include <network/messages/payloads/player_identity_message.h>
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -11,6 +12,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -67,6 +69,12 @@ namespace cna::client
 
         // 서버 연결 완료 여부를 반환하는 함수
         bool IsConnected() const noexcept;
+
+        // 서버가 현재 연결에 할당한 Room ID를 반환하는 함수
+        std::optional<cna::RoomId> GetRoomId() const noexcept;
+
+        // 서버가 현재 연결에 할당한 Player ID를 반환하는 함수
+        std::optional<cna::PlayerId> GetPlayerId() const noexcept;
 
     private:
         using Tcp = boost::asio::ip::tcp;
@@ -175,5 +183,8 @@ namespace cna::client
 
         // 여러 번 나뉘거나 합쳐져 수신된 TCP 데이터를 저장하는 누적 버퍼
         std::vector<std::byte> accumulatedBuffer_;
+
+        // 서버가 현재 연결에 할당한 Room 및 Player 식별 정보
+        std::optional<cna::network::PlayerIdentityPayload> playerIdentity_;
     };
 }
