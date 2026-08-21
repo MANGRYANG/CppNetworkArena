@@ -3,6 +3,7 @@
 #include <network/messages/core/message_codec.h>
 #include <network/messages/core/message_header.h>
 #include <network/messages/payloads/player_identity_message.h>
+#include <network/messages/payloads/world_state_snapshot_message.h>
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/connect.hpp>
@@ -10,6 +11,7 @@
 
 #include <boost/system/errc.hpp>
 
+#include <algorithm>
 #include <iostream>
 #include <span>
 #include <string>
@@ -464,10 +466,81 @@ namespace cna::client
 
     bool NetworkClient::HandleWorldStateSnapshot(std::span<const std::byte> payload)
     {
-        // 이후 세부 로직 구현 필요
+        cna::network::WorldStateSnapshot snapshot;
+
+        // WorldStateSnapshot Payload 역직렬화 및 데이터 유효성 검사
+        if (!cna::network::DecodeWorldStateSnapshotPayload(payload, snapshot))
+        {
+            std::cerr
+                << "[NetworkClient] Invalid WorldStateSnapshot payload"
+                << ": payload=" << payload.size()
+                << '\n';
+
+            return false;
+        }
+
+        // 플레이어 식별 정보를 받기 전에 월드 스냅샷이 도착한 경우
+        if (!playerIdentity_)
+        {
+            std::cerr
+                << "[NetworkClient] WorldStateSnapshot received before PlayerIdentity"
+                << ": roomId=" << snapshot.roomId
+                << '\n';
+
+            return false;
+        }
+
+        // 현재 플레이어가 입장한 Room과 스냅샷의 Room이 다른 경우
+        if (snapshot.roomId != playerIdentity_->roomId)
+        {
+            std::cerr
+                << "[NetworkClient] WorldStateSnapshot room mismatch"
+                << ": expectedRoomId=" << playerIdentity_->roomId
+                << ", receivedRoomId=" << snapshot.roomId
+                << '\n';
+
+            return false;
+        }
+
+        // 스냅샷에서 현재 클라이언트에 할당된 로컬 플레이어 검색
+        const auto localPlayerIterator = std::find_if
+        (
+            snapshot.players.cbegin(),
+            snapshot.players.cend(),
+            [this](const cna::network::PlayerStateSnapshot& player)
+            {
+                return player.playerId == playerIdentity_->playerId;
+            }
+        );
+
+        // 현재 클라이언트의 플레이어가 스냅샷에 포함되지 않은 경우
+        if (localPlayerIterator == snapshot.players.cend())
+        {
+            std::cerr
+                << "[NetworkClient] Local player missing from WorldStateSnapshot"
+                << ": roomId=" << snapshot.roomId
+                << ", playerId=" << playerIdentity_->playerId
+                << '\n';
+
+            return false;
+        }
+
+        const cna::network::PlayerStateSnapshot& localPlayer = *localPlayerIterator;
+
+        // 현재 클라이언트의 플레이어 월드 상태 출력
         std::cout
-            << "[NetworkClient] WorldStateSnapshot dispatched: payload="
-            << payload.size()
+            << "[NetworkClient] WorldStateSnapshot received"
+            << ": roomId=" << snapshot.roomId
+            << ", playerCount=" << snapshot.players.size()
+            << ", localPlayerId=" << localPlayer.playerId
+            << ", position=("
+            << localPlayer.positionX << ", "
+            << localPlayer.positionY << ", "
+            << localPlayer.positionZ << ')'
+            << ", velocity=("
+            << localPlayer.velocityX << ", "
+            << localPlayer.velocityY << ", "
+            << localPlayer.velocityZ << ')'
             << '\n';
 
         return true;
