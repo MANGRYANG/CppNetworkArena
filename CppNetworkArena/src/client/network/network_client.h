@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -64,6 +65,9 @@ namespace cna::client
         // 진행 중인 연결 작업을 취소하거나 연결된 소켓을 종료하는 함수
         bool Disconnect();
 
+        // 메시지를 직렬화하여 비동기 송신 큐에 등록하는 함수
+        bool Send(cna::network::MessageType type, std::span<const std::byte> payload);
+
         // 현재 클라이언트 연결 상태를 반환하는 함수
         ConnectionState GetConnectionState() const noexcept;
 
@@ -81,6 +85,9 @@ namespace cna::client
 
         // 한 번의 비동기 수신에 사용할 임시 버퍼 크기
         static constexpr std::size_t ReceiveBufferSize = 1024;
+
+        // 서버에 송신 대기할 수 있는 최대 전체 바이트 수
+        static constexpr std::size_t MaxPendingSendBytes = 256 * 1024;
 
         // 현재 연결 세대 및 클라이언트 연결 상태가 일치하는지 검증하는 내부 헬퍼
         bool IsCurrentOperation(std::uint64_t connectionGeneration, ConnectionState expectedState) const noexcept;
@@ -137,6 +144,17 @@ namespace cna::client
         // 월드 상태 스냅샷 메시지 전용 핸들러 함수
         bool HandleWorldStateSnapshot(std::span<const std::byte> payload);
 
+        // 송신 큐의 첫 번째 메시지에 대한 비동기 송신을 시작하는 함수
+        void WriteNext(std::uint64_t connectionGeneration);
+
+        // 비동기 메시지 송신 결과를 처리하는 함수
+        void HandleWrite
+        (
+            const boost::system::error_code& error,
+            std::size_t bytesTransferred,
+            std::uint64_t connectionGeneration
+        );
+
         // 연결 실패 상태를 정리한 뒤 실패 콜백 호출
         void CompleteConnectionFailure
         (
@@ -153,6 +171,9 @@ namespace cna::client
 
         // 연결 상태와 자원 및 콜백을 초기화하는 함수
         void ResetConnection();
+
+        // 송신 큐를 초기화하는 함수
+        void ClearSendQueue() noexcept;
 
         // 소켓에 등록된 작업을 취소하고 소켓 종료
         void CloseSocket() noexcept;
@@ -183,6 +204,12 @@ namespace cna::client
 
         // 여러 번 나뉘거나 합쳐져 수신된 TCP 데이터를 저장하는 누적 버퍼
         std::vector<std::byte> accumulatedBuffer_;
+
+        // 서버에 순차적으로 송신할 직렬화된 메시지를 보관하는 큐
+        std::queue<std::vector<std::byte>> sendQueue_;
+
+        // 현재 송신 중이거나 송신 대기 중인 전체 바이트 수
+        std::size_t pendingSendBytes_ = 0;
 
         // 서버가 현재 연결에 할당한 Room 및 Player 식별 정보
         std::optional<cna::network::PlayerIdentityPayload> playerIdentity_;
