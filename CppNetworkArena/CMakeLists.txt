@@ -2,7 +2,7 @@
 cmake_minimum_required (VERSION 3.20)
 
 # CMake 프로젝트 정의
-project(CppNetworkArena VERSION 0.3.0 LANGUAGES CXX)
+project(CppNetworkArena VERSION 0.4.0 LANGUAGES CXX)
 
 # 프로젝트 전체 C++ 컴파일 기준 설정
 set(CMAKE_CXX_STANDARD 20)                  # C++20 표준 사용
@@ -81,12 +81,15 @@ set_target_properties(GameServer PROPERTIES FOLDER "Apps")
 # 클라이언트 실행 파일 생성 (GameClient.exe)
 add_executable(GameClient
     src/client/main.cpp
+    src/client/network/network_client.cpp
+    src/client/network/network_client.h
 )
 
-# GameClient 타깃을 빌드할 때 CppNetworkArenaShared 타깃을 링크하도록 설정
+# GameClient 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 Boost.Asio를 링크하도록 설정
 target_link_libraries(GameClient
     PRIVATE
         CppNetworkArenaShared
+        Boost::asio
 )
 
 # Visual Studio에서 GameClient 타깃이 Apps 폴더 아래에 표시되도록 설정
