@@ -2,6 +2,7 @@
 
 #include <network/messages/core/message_header.h>
 #include <network/messages/payloads/player_identity_message.h>
+#include <network/messages/payloads/player_input_message.h>
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -67,6 +68,9 @@ namespace cna::client
 
         // 메시지를 직렬화하여 비동기 송신 큐에 등록하는 함수
         bool Send(cna::network::MessageType type, std::span<const std::byte> payload);
+
+        // 플레이어 입력을 직렬화하여 비동기 송신 큐에 등록하는 함수
+        bool SendPlayerInput(const cna::network::PlayerInputPayload& input);
 
         // 현재 클라이언트 연결 상태를 반환하는 함수
         ConnectionState GetConnectionState() const noexcept;

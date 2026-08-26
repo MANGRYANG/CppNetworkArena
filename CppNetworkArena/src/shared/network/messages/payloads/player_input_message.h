@@ -42,6 +42,34 @@ namespace cna::network
         return (value >= -MaxPlayerInputAxisRawValue && value <= MaxPlayerInputAxisRawValue);
     }
 
+    // 플레이어 입력이 허용 세기 범위 내인지 확인하는 함수
+    inline bool IsValidPlayerInput(const PlayerInputPayload& input) noexcept
+    {
+        return
+            IsValidPlayerInputAxisRawValue(input.moveX) &&
+            IsValidPlayerInputAxisRawValue(input.moveY) &&
+            IsValidPlayerInputAxisRawValue(input.moveZ);
+    }
+
+    // PlayerInput Payload를 직렬화하는 함수
+    inline bool EncodePlayerInputPayload(const PlayerInputPayload& input, std::array<std::byte, PlayerInputPayloadSize>& payload)
+    {
+        // 출력 버퍼 초기화
+        payload.fill(std::byte{ 0 });
+
+        // 플레이어 입력 값이 허용 범위를 벗어난 경우
+        if (!IsValidPlayerInput(input))
+        {
+            return false;
+        }
+
+        WriteUint16(payload, 0, std::bit_cast<std::uint16_t>(input.moveX));
+        WriteUint16(payload, sizeof(std::int16_t), std::bit_cast<std::uint16_t>(input.moveY));
+        WriteUint16(payload, sizeof(std::int16_t) * 2, std::bit_cast<std::uint16_t>(input.moveZ));
+
+        return true;
+    }
+
     // PlayerInput Payload를 역직렬화하는 함수
     inline bool DecodePlayerInputPayload(const std::span<const std::byte> payload, PlayerInputPayload& input)
     {
@@ -58,10 +86,8 @@ namespace cna::network
         decodedInput.moveY = std::bit_cast<std::int16_t>(ReadUint16(payload, sizeof(std::int16_t)));
         decodedInput.moveZ = std::bit_cast<std::int16_t>(ReadUint16(payload, sizeof(std::int16_t) * 2));
 
-        // 플레이어 입력이 허용 세기 범위를 벗어난 경우
-        if (!IsValidPlayerInputAxisRawValue(decodedInput.moveX) ||
-            !IsValidPlayerInputAxisRawValue(decodedInput.moveY) ||
-            !IsValidPlayerInputAxisRawValue(decodedInput.moveZ))
+        // 플레이어 입력 값이 허용 범위를 벗어난 경우
+        if (!IsValidPlayerInput(decodedInput))
         {
             return false;
         }
@@ -69,19 +95,5 @@ namespace cna::network
         input = decodedInput;
 
         return true;
-
-        return true;
-    }
-
-    // PlayerInput Payload를 직렬화하는 함수
-    inline std::array<std::byte, PlayerInputPayloadSize> EncodePlayerInputPayload(const PlayerInputPayload& input)
-    {
-        std::array<std::byte, PlayerInputPayloadSize> payload{};
-
-        WriteUint16(payload, 0, std::bit_cast<std::uint16_t>(input.moveX));
-        WriteUint16(payload, sizeof(std::int16_t), std::bit_cast<std::uint16_t>(input.moveY));
-        WriteUint16(payload, sizeof(std::int16_t) * 2, std::bit_cast<std::uint16_t>(input.moveZ));
-
-        return payload;
     }
 }

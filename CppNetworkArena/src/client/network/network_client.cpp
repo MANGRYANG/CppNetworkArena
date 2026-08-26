@@ -3,6 +3,7 @@
 #include <network/messages/core/message_codec.h>
 #include <network/messages/core/message_header.h>
 #include <network/messages/payloads/player_identity_message.h>
+#include <network/messages/payloads/player_input_message.h>
 #include <network/messages/payloads/world_state_snapshot_message.h>
 
 #include <boost/asio/buffer.hpp>
@@ -194,6 +195,41 @@ namespace cna::client
         }
 
         return true;
+    }
+
+    bool NetworkClient::SendPlayerInput(const cna::network::PlayerInputPayload& input)
+    {
+        // 연결이 완료되지 않은 상태인 경우 송신 요청 거부
+        if (connectionState_ != ConnectionState::Connected)
+        {
+            return false;
+        }
+
+        // 플레이어 식별 정보를 받기 전인 경우 송신 요청 거부
+        if (!playerIdentity_)
+        {
+            std::cerr << "[NetworkClient] PlayerInput rejected before PlayerIdentity" << '\n';
+
+            return false;
+        }
+
+        std::array<std::byte, cna::network::PlayerInputPayloadSize> payload{};
+
+        // 플레이어 입력값 검증 및 Payload 직렬화
+        if (!cna::network::EncodePlayerInputPayload(input, payload))
+        {
+            std::cerr
+                << "[NetworkClient] Invalid PlayerInput"
+                << ": moveX=" << input.moveX
+                << ", moveY=" << input.moveY
+                << ", moveZ=" << input.moveZ
+                << '\n';
+
+            return false;
+        }
+
+        // 직렬화된 플레이어 입력을 공용 비동기 송신 큐에 등록
+        return Send(cna::network::MessageType::PlayerInput, payload);
     }
 
     NetworkClient::ConnectionState NetworkClient::GetConnectionState() const noexcept
