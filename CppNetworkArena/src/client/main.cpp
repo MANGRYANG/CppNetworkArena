@@ -79,6 +79,14 @@ int main(void)
 
                 exitCode = 1;
             },
+            [](const cna::network::PlayerIdentityPayload& identity)
+            {
+                std::cout
+                    << "[GameClient] PlayerIdentity received"
+                    << ": roomId=" << identity.roomId
+                    << ", playerId=" << identity.playerId
+                    << '\n';
+            },
             [](const cna::network::WorldStateSnapshot& snapshot)
             {
                 std::cout

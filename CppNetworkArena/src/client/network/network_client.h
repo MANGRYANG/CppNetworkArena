@@ -43,6 +43,9 @@ namespace cna::client
         // 연결된 서버와의 통신이 예기치 않게 종료된 경우 호출할 콜백 시그니처
         using DisconnectedCallback = std::function<void(const boost::system::error_code&)>;
 
+        // 플레이어 식별 정보를 수신했을 때 호출할 콜백 시그니처
+        using PlayerIdentityCallback = std::function<void(const cna::network::PlayerIdentityPayload&)>;
+
         // 월드 상태 스냅샷을 수신했을 때 호출할 콜백 시그니처
         using WorldStateSnapshotCallback = std::function<void(const cna::network::WorldStateSnapshot&)>;
 
@@ -65,6 +68,7 @@ namespace cna::client
             ConnectedCallback onConnected,
             ConnectionFailedCallback onConnectionFailed,
             DisconnectedCallback onDisconnected,
+            PlayerIdentityCallback onPlayerIdentity,
             WorldStateSnapshotCallback onWorldStateSnapshot
         );
 
@@ -207,6 +211,9 @@ namespace cna::client
 
         // 연결된 서버와의 통신이 예기치 않게 종료된 경우 호출할 콜백
         DisconnectedCallback onDisconnected_;
+
+        // 플레이어 식별 정보를 수신했을 때 호출할 콜백
+        PlayerIdentityCallback onPlayerIdentity_;
 
         // 월드 상태 스냅샷을 수신했을 때 호출할 콜백
         WorldStateSnapshotCallback onWorldStateSnapshot_;
