@@ -78,6 +78,14 @@ int main(void)
                     << '\n';
 
                 exitCode = 1;
+            },
+            [](const cna::network::WorldStateSnapshot& snapshot)
+            {
+                std::cout
+                    << "[GameClient] WorldStateSnapshot received"
+                    << ": roomId=" << snapshot.roomId
+                    << ", playerCount=" << snapshot.players.size()
+                    << '\n';
             }
         );
 
