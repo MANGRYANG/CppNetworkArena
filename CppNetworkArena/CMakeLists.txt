@@ -81,6 +81,8 @@ set_target_properties(GameServer PROPERTIES FOLDER "Apps")
 # 클라이언트 실행 파일 생성 (GameClient.exe)
 add_executable(GameClient
     src/client/main.cpp
+    src/client/game/client_game_state.cpp
+    src/client/game/client_game_state.h
     src/client/network/network_client.cpp
     src/client/network/network_client.h
 )

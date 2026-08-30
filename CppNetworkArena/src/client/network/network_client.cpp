@@ -14,7 +14,6 @@
 
 #include <boost/system/errc.hpp>
 
-#include <algorithm>
 #include <iostream>
 #include <span>
 #include <string>
