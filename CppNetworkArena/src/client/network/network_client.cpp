@@ -9,11 +9,11 @@
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/connect.hpp>
 #include <boost/asio/error.hpp>
+#include <boost/asio/post.hpp>
 #include <boost/asio/write.hpp>
 
 #include <boost/system/errc.hpp>
 
-#include <algorithm>
 #include <iostream>
 #include <span>
 #include <string>
@@ -38,7 +38,9 @@ namespace cna::client
         const std::uint16_t port,
         ConnectedCallback onConnected,
         ConnectionFailedCallback onConnectionFailed,
-        DisconnectedCallback onDisconnected
+        DisconnectedCallback onDisconnected,
+        PlayerIdentityCallback onPlayerIdentity,
+        WorldStateSnapshotCallback onWorldStateSnapshot
     )
     {
         // 연결 해제 상태가 아닌 경우 중복 연결 요청 거부
@@ -74,6 +76,12 @@ namespace cna::client
 
         // 연결 종료 시 호출할 콜백 설정
         onDisconnected_ = std::move(onDisconnected);
+
+        // 플레이어 식별 정보를 전달할 콜백 설정
+        onPlayerIdentity_ = std::move(onPlayerIdentity);
+
+        // 월드 상태 스냅샷을 전달할 콜백 설정
+        onWorldStateSnapshot_ = std::move(onWorldStateSnapshot);
 
         // 새로운 연결에 이전 연결의 수신 데이터가 남지 않도록 초기화
         accumulatedBuffer_.clear();
@@ -573,11 +581,42 @@ namespace cna::client
         // 검증이 완료된 현재 연결의 식별 정보 저장
         playerIdentity_ = identity;
 
-        std::cout
-            << "[NetworkClient] PlayerIdentity received"
-            << ": roomId=" << identity.roomId
-            << ", playerId=" << identity.playerId
-            << '\n';
+        // 등록된 식별 정보 수신 콜백이 없는 경우 정상 처리
+        if (!onPlayerIdentity_)
+        {
+            return true;
+        }
+
+        // 현재 연결 세대 값 보관
+        const std::uint64_t connectionGeneration = connectionGeneration_;
+
+        // 비동기 작업이 완료될 때까지 클라이언트 객체의 생명 주기를 유지
+        const std::shared_ptr<NetworkClient> self = shared_from_this();
+
+        // 등록된 플레이어 식별 정보 수신 콜백 보관
+        PlayerIdentityCallback identityCallback = onPlayerIdentity_;
+
+        // 현재 메시지 처리 작업이 종료된 후 상위 계층 콜백 실행
+        boost::asio::post
+        (
+            socket_.get_executor(),
+            [
+                self,
+                identityCallback = std::move(identityCallback),
+                identity = std::move(identity),
+                connectionGeneration
+            ](void)
+            {
+                // 현재 연결 상태가 post 호출 시점과 동일하게 유지되는지 확인
+                if (!self->IsCurrentOperation(connectionGeneration, ConnectionState::Connected))
+                {
+                    return;
+                }
+
+                // 상위 계층 콜백 실행
+                identityCallback(identity);
+            }
+        );
 
         return true;
     }
@@ -620,46 +659,42 @@ namespace cna::client
             return false;
         }
 
-        // 스냅샷에서 현재 클라이언트에 할당된 로컬 플레이어 검색
-        const auto localPlayerIterator = std::find_if
-        (
-            snapshot.players.cbegin(),
-            snapshot.players.cend(),
-            [this](const cna::network::PlayerStateSnapshot& player)
-            {
-                return player.playerId == playerIdentity_->playerId;
-            }
-        );
-
-        // 현재 클라이언트의 플레이어가 스냅샷에 포함되지 않은 경우
-        if (localPlayerIterator == snapshot.players.cend())
+        // 등록된 스냅샷 수신 콜백이 없는 경우 정상 처리
+        if (!onWorldStateSnapshot_)
         {
-            std::cerr
-                << "[NetworkClient] Local player missing from WorldStateSnapshot"
-                << ": roomId=" << snapshot.roomId
-                << ", playerId=" << playerIdentity_->playerId
-                << '\n';
-
-            return false;
+            return true;
         }
 
-        const cna::network::PlayerStateSnapshot& localPlayer = *localPlayerIterator;
+        // 현재 연결 세대 값 보관
+        const std::uint64_t connectionGeneration = connectionGeneration_;
 
-        // 현재 클라이언트의 플레이어 월드 상태 출력
-        std::cout
-            << "[NetworkClient] WorldStateSnapshot received"
-            << ": roomId=" << snapshot.roomId
-            << ", playerCount=" << snapshot.players.size()
-            << ", localPlayerId=" << localPlayer.playerId
-            << ", position=("
-            << localPlayer.positionX << ", "
-            << localPlayer.positionY << ", "
-            << localPlayer.positionZ << ')'
-            << ", velocity=("
-            << localPlayer.velocityX << ", "
-            << localPlayer.velocityY << ", "
-            << localPlayer.velocityZ << ')'
-            << '\n';
+        // 비동기 작업이 완료될 때까지 클라이언트 객체의 생명 주기를 유지
+        const std::shared_ptr<NetworkClient> self = shared_from_this();
+
+        // 등록된 스냅샷 수신 콜백 보관
+        WorldStateSnapshotCallback snapshotCallback = onWorldStateSnapshot_;
+
+        // 현재 메시지 처리 작업이 종료된 후 상위 계층 콜백 실행
+        boost::asio::post
+        (
+            socket_.get_executor(),
+            [
+                self,
+                snapshotCallback = std::move(snapshotCallback),
+                snapshot = std::move(snapshot),
+                connectionGeneration
+            ](void)
+            {
+                // 현재 연결 상태가 post 호출 시점과 동일하게 유지되는지 확인
+                if (!self->IsCurrentOperation(connectionGeneration, ConnectionState::Connected))
+                {
+                    return;
+                }
+
+                // 상위 계층 콜백 실행
+                snapshotCallback(snapshot);
+            }
+        );
 
         return true;
     }
@@ -820,6 +855,8 @@ namespace cna::client
         onConnectionFailed_ = {};
         onConnected_ = {};
         onDisconnected_ = {};
+        onPlayerIdentity_ = {};
+        onWorldStateSnapshot_ = {};
 
         // 연결 실패 콜백 호출
         if (connectionFailedCallback)
@@ -860,6 +897,8 @@ namespace cna::client
 
         // 일회성 콜백을 위한 콜백 변수 초기화
         onDisconnected_ = {};
+        onPlayerIdentity_ = {};
+        onWorldStateSnapshot_ = {};
 
         // 연결 종료 콜백 호출
         if (disconnectedCallback)
@@ -892,6 +931,8 @@ namespace cna::client
         onConnected_ = {};
         onConnectionFailed_ = {};
         onDisconnected_ = {};
+        onPlayerIdentity_ = {};
+        onWorldStateSnapshot_ = {};
     }
 
     void NetworkClient::ClearSendQueue() noexcept

@@ -31,12 +31,19 @@ namespace cna::network
     // 네트워크 바이트 순서로 저장된 32비트 정수를 호스트 값으로 변환하는 인라인 함수
     inline std::uint32_t ReadUint32(const std::span<const std::byte> data, const std::size_t offset)
     {
-        const std::uint32_t byte0 = std::to_integer<std::uint32_t>(data[offset]);
-        const std::uint32_t byte1 = std::to_integer<std::uint32_t>(data[offset + 1]);
-        const std::uint32_t byte2 = std::to_integer<std::uint32_t>(data[offset + 2]);
-        const std::uint32_t byte3 = std::to_integer<std::uint32_t>(data[offset + 3]);
+        const std::uint32_t high = static_cast<std::uint32_t>(ReadUint16(data, offset));
+        const std::uint32_t low = static_cast<std::uint32_t>(ReadUint16(data, offset + sizeof(std::uint16_t)));
 
-        return (byte0 << 24) | (byte1 << 16) | (byte2 << 8) | byte3;
+        return (high << 16) | low;
+    }
+
+    // 네트워크 바이트 순서로 저장된 64비트 정수를 호스트 값으로 변환하는 인라인 함수
+    inline std::uint64_t ReadUint64(const std::span<const std::byte> data, const std::size_t offset)
+    {
+        const std::uint64_t high = static_cast<std::uint64_t>(ReadUint32(data, offset));
+        const std::uint64_t low = static_cast<std::uint64_t>(ReadUint32(data, offset + sizeof(std::uint32_t)));
+
+        return (high << 32) | low;
     }
 
     // 네트워크 바이트 순서로 저장된 32비트 실수 값을 호스트 값으로 변환하는 인라인 함수
@@ -62,25 +69,15 @@ namespace cna::network
     // 호스트 바이트 순서의 32비트 정수를 네트워크 바이트 순서로 기록하는 인라인 함수
     inline void WriteUint32(std::span<std::byte> data, const std::size_t offset, const std::uint32_t value)
     {
-        data[offset] = std::byte
-        {
-            static_cast<unsigned char>((value >> 24) & 0xFF)
-        };
+        WriteUint16(data, offset, static_cast<std::uint16_t>(value >> 16));
+        WriteUint16(data, offset + sizeof(std::uint16_t), static_cast<std::uint16_t>(value & 0xFFFFU));
+    }
 
-        data[offset + 1] = std::byte
-        {
-            static_cast<unsigned char>((value >> 16) & 0xFF)
-        };
-
-        data[offset + 2] = std::byte
-        {
-            static_cast<unsigned char>((value >> 8) & 0xFF)
-        };
-
-        data[offset + 3] = std::byte
-        {
-            static_cast<unsigned char>(value & 0xFF)
-        };
+    // 호스트 바이트 순서의 64비트 정수를 네트워크 바이트 순서로 기록하는 인라인 함수
+    inline void WriteUint64(std::span<std::byte> data, const std::size_t offset, const std::uint64_t value)
+    {
+        WriteUint32(data, offset, static_cast<std::uint32_t>(value >> 32));
+        WriteUint32(data, offset + sizeof(std::uint32_t), static_cast<std::uint32_t>(value & 0xFFFFFFFFULL));
     }
 
     // 호스트 바이트 순서의 32비트 실수를 네트워크 바이트 순서로 기록하는 인라인 함수

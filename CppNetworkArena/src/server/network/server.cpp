@@ -368,6 +368,9 @@ namespace cna::server
             deltaSeconds = MaxServerTickDeltaSeconds;
         }
 
+        // 현재 서버 게임 시뮬레이션 Tick 증가
+        ++serverTick_;
+
         // 기본 Room의 게임 상태 갱신
         TickDefaultRoom(deltaSeconds);
 
@@ -396,7 +399,7 @@ namespace cna::server
         defaultRoom->Tick(deltaSeconds);
 
         // 갱신된 Room의 현재 상태 스냅샷 생성
-        const cna::network::WorldStateSnapshot snapshot = defaultRoom->CaptureSnapshot();
+        const cna::network::WorldStateSnapshot snapshot = defaultRoom->CaptureSnapshot(serverTick_);
 
         std::vector<std::byte> payload;
 
@@ -404,8 +407,9 @@ namespace cna::server
         if (!cna::network::EncodeWorldStateSnapshotPayload(snapshot, payload))
         {
             std::cerr
-                << "[Server] Failed to encode WorldStateSnapshot: roomId="
-                << defaultRoom->GetRoomId()
+                << "[Server] Failed to encode WorldStateSnapshot"
+                << ": serverTick=" << snapshot.serverTick
+                << ", roomId=" << defaultRoom->GetRoomId()
                 << '\n';
 
             return;

@@ -3,6 +3,7 @@
 #include <network/messages/core/message_header.h>
 #include <network/messages/payloads/player_identity_message.h>
 #include <network/messages/payloads/player_input_message.h>
+#include <network/messages/payloads/world_state_snapshot_message.h>
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -42,6 +43,12 @@ namespace cna::client
         // 연결된 서버와의 통신이 예기치 않게 종료된 경우 호출할 콜백 시그니처
         using DisconnectedCallback = std::function<void(const boost::system::error_code&)>;
 
+        // 플레이어 식별 정보를 수신했을 때 호출할 콜백 시그니처
+        using PlayerIdentityCallback = std::function<void(const cna::network::PlayerIdentityPayload&)>;
+
+        // 월드 상태 스냅샷을 수신했을 때 호출할 콜백 시그니처
+        using WorldStateSnapshotCallback = std::function<void(const cna::network::WorldStateSnapshot&)>;
+
         explicit NetworkClient(boost::asio::io_context& ioContext);
         ~NetworkClient();
 
@@ -60,7 +67,9 @@ namespace cna::client
             std::uint16_t port,
             ConnectedCallback onConnected,
             ConnectionFailedCallback onConnectionFailed,
-            DisconnectedCallback onDisconnected
+            DisconnectedCallback onDisconnected,
+            PlayerIdentityCallback onPlayerIdentity,
+            WorldStateSnapshotCallback onWorldStateSnapshot
         );
 
         // 진행 중인 연결 작업을 취소하거나 연결된 소켓을 종료하는 함수
@@ -202,6 +211,12 @@ namespace cna::client
 
         // 연결된 서버와의 통신이 예기치 않게 종료된 경우 호출할 콜백
         DisconnectedCallback onDisconnected_;
+
+        // 플레이어 식별 정보를 수신했을 때 호출할 콜백
+        PlayerIdentityCallback onPlayerIdentity_;
+
+        // 월드 상태 스냅샷을 수신했을 때 호출할 콜백
+        WorldStateSnapshotCallback onWorldStateSnapshot_;
 
         // 서버에서 받은 데이터를 임시로 저장하는 수신 버퍼
         std::array<std::byte, ReceiveBufferSize> receiveBuffer_{};

@@ -2,7 +2,7 @@
 cmake_minimum_required (VERSION 3.20)
 
 # CMake 프로젝트 정의
-project(CppNetworkArena VERSION 0.4.0 LANGUAGES CXX)
+project(CppNetworkArena VERSION 0.5.0 LANGUAGES CXX)
 
 # 프로젝트 전체 C++ 컴파일 기준 설정
 set(CMAKE_CXX_STANDARD 20)                  # C++20 표준 사용
@@ -81,6 +81,8 @@ set_target_properties(GameServer PROPERTIES FOLDER "Apps")
 # 클라이언트 실행 파일 생성 (GameClient.exe)
 add_executable(GameClient
     src/client/main.cpp
+    src/client/game/client_game_state.cpp
+    src/client/game/client_game_state.h
     src/client/network/network_client.cpp
     src/client/network/network_client.h
 )

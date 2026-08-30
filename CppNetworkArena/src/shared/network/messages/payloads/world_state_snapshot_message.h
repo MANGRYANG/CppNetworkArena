@@ -14,6 +14,7 @@
 /*
 * 
 WorldStateSnapshot 타입 메시지 Payload wire format :
+[serverTick: uint64]
 [roomId: uint32]
 [playerCount: uint16]
 [players: PlayerStateSnapshot x playerCount]
@@ -41,6 +42,9 @@ namespace cna::network
     // 서버가 클라이언트로 전송하는 Room의 게임 상태 스냅샷의 논리 데이터
     struct WorldStateSnapshot
     {
+        // 스냅샷이 생성된 서버 게임 시뮬레이션 Tick
+        cna::ServerTick serverTick = 0;
+
         // 스냅샷이 생성된 Room의 ID
         cna::RoomId roomId = 0;
 
@@ -49,7 +53,7 @@ namespace cna::network
     };
 
     // 플레이어 목록을 제외한 WorldStateSnapshot Payload의 고정 크기
-    inline constexpr std::size_t WorldStateSnapshotFixedPayloadSize = sizeof(std::uint32_t) + sizeof(std::uint16_t);
+    inline constexpr std::size_t WorldStateSnapshotFixedPayloadSize = sizeof(std::uint64_t) + sizeof(std::uint32_t) + sizeof(std::uint16_t);
 
     // 플레이어 한 명의 상태가 네트워크 Payload에서 차지하는 크기
     inline constexpr std::size_t PlayerStateSnapshotSize = sizeof(std::uint32_t) + sizeof(float) * 6;
@@ -73,8 +77,8 @@ namespace cna::network
         // 이전 직렬화 결과 초기화
         payload.clear();
 
-        // 유효하지 않은 Room ID인 경우 실패 처리
-        if (snapshot.roomId == 0)
+        // 유효하지 않은 서버 Tick 또는 Room ID인 경우 실패 처리
+        if (snapshot.serverTick == 0 || snapshot.roomId == 0)
         {
             return false;
         }
@@ -91,11 +95,14 @@ namespace cna::network
         // 계산된 Payload 크기만큼의 직렬화 버퍼 공간 확보
         payload.resize(payloadSize);
 
+        // 서버 Tick 직렬화
+        WriteUint64(payload, 0, snapshot.serverTick);
+
         // Room ID 직렬화
-        WriteUint32(payload, 0, snapshot.roomId);
+        WriteUint32(payload, sizeof(std::uint64_t), snapshot.roomId);
 
         // 플레이어 수 직렬화
-        WriteUint16(payload, sizeof(std::uint32_t), static_cast<std::uint16_t>(snapshot.players.size()));
+        WriteUint16(payload, sizeof(std::uint64_t) + sizeof(std::uint32_t), static_cast<std::uint16_t>(snapshot.players.size()));
 
         std::size_t offset = WorldStateSnapshotFixedPayloadSize;
 
@@ -147,12 +154,17 @@ namespace cna::network
         // 역직렬화가 완료되기 전까지 기존 출력 객체를 변경하지 않기 위한 임시 객체
         WorldStateSnapshot decodedSnapshot;
 
-        decodedSnapshot.roomId = ReadUint32(payload, 0);
+        // 서버 Tick 역직렬화
+        decodedSnapshot.serverTick = ReadUint64(payload, 0);
 
-        const std::uint16_t playerCount = ReadUint16(payload, sizeof(std::uint32_t));
+        // Room ID 역직렬화
+        decodedSnapshot.roomId = ReadUint32(payload, sizeof(std::uint64_t));
 
-        // 유효하지 않은 Room ID인 경우 실패 처리
-        if (decodedSnapshot.roomId == 0)
+        // 플레이어 수 역직렬화
+        const std::uint16_t playerCount = ReadUint16(payload, sizeof(std::uint64_t) + sizeof(std::uint32_t));
+
+        // 유효하지 않은 서버 Tick 또는 Room ID인 경우 실패 처리
+        if (decodedSnapshot.serverTick == 0 || decodedSnapshot.roomId == 0)
         {
             return false;
         }
