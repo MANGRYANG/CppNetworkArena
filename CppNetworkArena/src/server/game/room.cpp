@@ -177,10 +177,11 @@ namespace cna::server
         }
     }
 
-    cna::network::WorldStateSnapshot Room::CaptureSnapshot() const
+    cna::network::WorldStateSnapshot Room::CaptureSnapshot(cna::ServerTick serverTick) const
     {
         // 현재 Room의 게임 상태 스냅샷
         cna::network::WorldStateSnapshot snapshot;
+        snapshot.serverTick = serverTick;
         snapshot.roomId = roomId_;
         snapshot.players.reserve(players_.size());
 

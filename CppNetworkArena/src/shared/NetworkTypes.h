@@ -9,4 +9,7 @@ namespace cna
 
     // 플레이어가 참가한 Room을 식별하기 위한 ID
     using RoomId = std::uint32_t;
+
+    // 서버 게임 시뮬레이션의 실행 순서를 식별하기 위한 Tick
+    using ServerTick = std::uint64_t;
 }

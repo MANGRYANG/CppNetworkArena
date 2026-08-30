@@ -85,6 +85,9 @@ namespace cna::server
         // 마지막 서버 Tick이 실행된 시간
         std::chrono::steady_clock::time_point lastTickTime_;
 
+        // 마지막으로 실행된 서버 게임 시뮬레이션 Tick
+        cna::ServerTick serverTick_ = 0;
+
         // 활성 클라이언트 세션 관리자
         SessionManager sessionManager_;
 

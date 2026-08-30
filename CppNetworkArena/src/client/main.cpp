@@ -129,7 +129,8 @@ int main(void)
                 {
                     std::cerr
                         << "[GameClient] WorldStateSnapshot rejected"
-                        << ": roomId=" << snapshot.roomId
+                        << ": serverTick=" << snapshot.serverTick
+                        << ", roomId=" << snapshot.roomId
                         << '\n';
 
                     return;
@@ -146,7 +147,8 @@ int main(void)
 
                 std::cout
                     << "[GameClient] WorldStateSnapshot received"
-                    << ": roomId=" << worldState->roomId
+                    << ": serverTick=" << worldState->serverTick
+                    << ", roomId=" << worldState->roomId
                     << ", playerCount=" << worldState->players.size()
                     << '\n';
             }

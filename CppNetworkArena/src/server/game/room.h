@@ -48,7 +48,7 @@ namespace cna::server
         void Tick(float deltaSeconds);
 
         // 현재 Room의 게임 상태 스냅샷을 생성하는 함수
-        cna::network::WorldStateSnapshot CaptureSnapshot() const;
+        cna::network::WorldStateSnapshot CaptureSnapshot(cna::ServerTick serverTick) const;
 
         // Room에 등록된 모든 활성 세션에게 메시지를 전송하는 함수
         void Broadcast(cna::network::MessageType type, std::span<const std::byte> payload);
