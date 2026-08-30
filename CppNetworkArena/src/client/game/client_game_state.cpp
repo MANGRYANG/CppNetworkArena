@@ -29,8 +29,20 @@ namespace cna::client
             return false;
         }
 
+        // 유효하지 않은 서버 Tick인 경우 적용 거부
+        if (snapshot.serverTick == 0)
+        {
+            return false;
+        }
+
         // 현재 플레이어가 입장한 Room과 스냅샷의 Room이 다른 경우 적용 거부
         if (snapshot.roomId != playerIdentity_->roomId)
+        {
+            return false;
+        }
+
+        // 기존에 등록된 스냅샷에 비해 최신 상태가 아닌 경우 적용 거부
+        if (worldState_ && (snapshot.serverTick <= worldState_->serverTick))
         {
             return false;
         }
@@ -130,5 +142,16 @@ namespace cna::client
 
         // 식별 정보를 기반으로 플레이어 탐색
         return FindPlayer(playerIdentity_->playerId);
+    }
+
+    std::optional<cna::ServerTick> ClientGameState::GetLatestServerTick() const noexcept
+    {
+        // 월드 상태 스냅샷이 적용되지 않은 상태인 경우
+        if (!worldState_)
+        {
+            return std::nullopt;
+        }
+
+        return worldState_->serverTick;
     }
 }

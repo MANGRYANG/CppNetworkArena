@@ -41,6 +41,9 @@ namespace cna::client
         // 현재 스냅샷에서 로컬 플레이어 상태를 반환하는 함수
         const cna::network::PlayerStateSnapshot* GetLocalPlayer() const noexcept;
 
+        // 마지막으로 적용된 월드 상태 스냅샷의 서버 Tick을 반환하는 함수
+        std::optional<cna::ServerTick> GetLatestServerTick() const noexcept;
+
     private:
         // 서버가 현재 연결에 할당한 Room 및 로컬 Player 식별 정보
         std::optional<cna::network::PlayerIdentityPayload> playerIdentity_;
