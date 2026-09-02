@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../game/client_game_state.h"
-#include "../network/network_client.h"
-#include "../platform/win32_window.h"
+#include "game/client_game_state.h"
+#include "network/network_client.h"
+#include "platform/win32_window.h"
 
 #include <boost/asio/io_context.hpp>
 #include <boost/system/error_code.hpp>

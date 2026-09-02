@@ -64,6 +64,12 @@ add_executable(GameServer
     src/server/network/session_manager.cpp
 )
 
+# GameServer 내부 전용 헤더 검색 경로 추가
+target_include_directories(GameServer
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+)
+
 # GameServer 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 Boost.Asio를 링크하도록 설정
 target_link_libraries(GameServer
     PRIVATE
@@ -91,6 +97,12 @@ add_executable(GameClient
     src/client/platform/win32_window.h
 )
 
+# GameClient 내부 전용 헤더 검색 경로 추가
+target_include_directories(GameClient
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+)
+
 # 전처리기 매크로 정의
 target_compile_definitions(GameClient
     PRIVATE
@@ -98,7 +110,7 @@ target_compile_definitions(GameClient
         NOMINMAX                # <windows.h>이 min, max 매크로를 정의하지 않음
 )
 
-# GameClient 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 Boost.Asio를 링크하도록 설정
+# GameClient 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 Boost.Asio, user32를 링크하도록 설정
 target_link_libraries(GameClient
     PRIVATE
         CppNetworkArenaShared

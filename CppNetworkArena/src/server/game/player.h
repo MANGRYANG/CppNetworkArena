@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../network/session_types.h"
+#include "network/session_types.h"
 
 #include <NetworkTypes.h>
 
