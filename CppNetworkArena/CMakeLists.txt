@@ -81,10 +81,21 @@ set_target_properties(GameServer PROPERTIES FOLDER "Apps")
 # 클라이언트 실행 파일 생성 (GameClient.exe)
 add_executable(GameClient
     src/client/main.cpp
+    src/client/application/client_application.cpp
+    src/client/application/client_application.h
     src/client/game/client_game_state.cpp
     src/client/game/client_game_state.h
     src/client/network/network_client.cpp
     src/client/network/network_client.h
+    src/client/platform/win32_window.cpp
+    src/client/platform/win32_window.h
+)
+
+# 전처리기 매크로 정의
+target_compile_definitions(GameClient
+    PRIVATE
+        WIN32_LEAN_AND_MEAN     # <window.h>에서 불필요한 Windows API 생략
+        NOMINMAX                # <windows.h>이 min, max 매크로를 정의하지 않음
 )
 
 # GameClient 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 Boost.Asio를 링크하도록 설정
@@ -92,6 +103,7 @@ target_link_libraries(GameClient
     PRIVATE
         CppNetworkArenaShared
         Boost::asio
+        user32
 )
 
 # Visual Studio에서 GameClient 타깃이 Apps 폴더 아래에 표시되도록 설정
