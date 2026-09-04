@@ -103,23 +103,11 @@ namespace cna::client
                 break;
             }
 
-            // 백 버퍼를 단색 배경으로 초기화
-            if (!renderer_.BeginFrame(0.05f, 0.08f, 0.12f, 1.0f))
+            Update();
+
+            // 애플리케이션 화면 렌더링
+            if (!Render())
             {
-                std::cerr << "[GameClient] Failed to clear backbuffer" << '\n';
-
-                RequestExit(1);
-
-                break;
-            }
-
-            // 백 버퍼와 프론트 버퍼를 교체하여 화면에 출력
-            if (!renderer_.EndFrame())
-            {
-                std::cerr << "[GameClient] Failed to present swapchain" << '\n';
-
-                RequestExit(1);
-
                 break;
             }
         }
@@ -300,5 +288,35 @@ namespace cna::client
             << ", roomId=" << worldState->roomId
             << ", playerCount=" << worldState->players.size()
             << '\n';
+    }
+
+    void ClientApplication::Update()
+    {
+        // 내부 데이터 및 상태 갱신 로직
+    }
+
+    bool ClientApplication::Render()
+    {
+        // 백 버퍼를 단색 배경으로 초기화
+        if (!renderer_.BeginFrame(0.05f, 0.08f, 0.12f, 1.0f))
+        {
+            std::cerr << "[GameClient] Failed to clear backbuffer" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        // 백 버퍼와 프론트 버퍼를 교체하여 화면에 출력
+        if (!renderer_.EndFrame())
+        {
+            std::cerr << "[GameClient] Failed to present swapchain" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        return true;
     }
 }

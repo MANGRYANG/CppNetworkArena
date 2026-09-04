@@ -58,6 +58,12 @@ namespace cna::client
         // 월드 상태 스냅샷 수신 이벤트를 처리하는 함수
         void HandleWorldStateSnapshot(const cna::network::WorldStateSnapshot& snapshot);
 
+        // 애플리케이션 내부 데이터 및 상태를 갱신하는 함수
+        void Update();
+
+        // 애플리케이션 화면을 렌더링하는 함수 
+        bool Render();
+
         // 비동기 네트워크 작업을 실행하는 IO 컨텍스트
         boost::asio::io_context ioContext_;
 
