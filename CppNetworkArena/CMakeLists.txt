@@ -70,7 +70,7 @@ target_include_directories(GameServer
         ${CMAKE_CURRENT_SOURCE_DIR}/src/server
 )
 
-# GameServer 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 Boost.Asio를 링크하도록 설정
+# GameServer 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 함께 필요한 라이브러리를 링크하도록 설정
 target_link_libraries(GameServer
     PRIVATE
         CppNetworkArenaShared
@@ -91,6 +91,8 @@ add_executable(GameClient
     src/client/application/client_application.h
     src/client/game/client_game_state.cpp
     src/client/game/client_game_state.h
+    src/client/graphics/d3d11_renderer.cpp
+    src/client/graphics/d3d11_renderer.h
     src/client/network/network_client.cpp
     src/client/network/network_client.h
     src/client/platform/win32_window.cpp
@@ -110,12 +112,13 @@ target_compile_definitions(GameClient
         NOMINMAX                # <windows.h>이 min, max 매크로를 정의하지 않음
 )
 
-# GameClient 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 Boost.Asio, user32를 링크하도록 설정
+# GameClient 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 함께 필요한 라이브러리들을 링크하도록 설정
 target_link_libraries(GameClient
     PRIVATE
         CppNetworkArenaShared
         Boost::asio
         user32
+        d3d11
 )
 
 # Visual Studio에서 GameClient 타깃이 Apps 폴더 아래에 표시되도록 설정

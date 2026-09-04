@@ -55,6 +55,18 @@ namespace cna::client
             return 1;
         }
 
+        // 생성된 Win32 윈도우를 대상으로 DirectX 11 그래픽 자원 초기화
+        if (!renderer_.Initialize(window_.GetHandle(), InitialClientWidth, InitialClientHeight))
+        {
+            // 초기화 실패 메시지 출력
+            std::cerr << "[GameClient] Failed to initialize DirectX 11 renderer" << '\n';
+
+            // 애플리케이션 종료
+            Shutdown();
+
+            return 1;
+        }
+
         // Win32 윈도우를 화면에 표시 
         window_.Show();
 
@@ -91,8 +103,25 @@ namespace cna::client
                 break;
             }
 
-            // 다음 Win32 메시지를 짧게 대기하여 CPU 과다 점유 방지
-            MsgWaitForMultipleObjectsEx(0, nullptr, MessageWaitMilliseconds, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+            // 백 버퍼를 단색 배경으로 초기화
+            if (!renderer_.BeginFrame(0.05f, 0.08f, 0.12f, 1.0f))
+            {
+                std::cerr << "[GameClient] Failed to clear backbuffer" << '\n';
+
+                RequestExit(1);
+
+                break;
+            }
+
+            // 백 버퍼와 프론트 버퍼를 교체하여 화면에 출력
+            if (!renderer_.EndFrame())
+            {
+                std::cerr << "[GameClient] Failed to present swapchain" << '\n';
+
+                RequestExit(1);
+
+                break;
+            }
         }
 
         // 애플리케이션 종료

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/client_game_state.h"
+#include "graphics/d3d11_renderer.h"
 #include "network/network_client.h"
 #include "platform/win32_window.h"
 
@@ -68,6 +69,9 @@ namespace cna::client
 
         // GameClient가 표시하는 Win32 플랫폼 윈도우
         Win32Window window_;
+
+        // DirectX 11 렌더러
+        D3D11Renderer renderer_;
 
         // 애플리케이션 루프의 상태 플래그
         bool running_ = false;
