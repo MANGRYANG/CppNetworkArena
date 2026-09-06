@@ -26,24 +26,36 @@ namespace cna::client
             &vertexOffset                   // 버퍼 시작점으로부터의 바이트 오프셋
         );
 
-        // 입력 조립기 단계의 데이터 형식 설정
+        // 입력 조립기 단계의 인덱스 버퍼 설정
+        context->IASetIndexBuffer
+        (
+            indexBuffer_.Get(),
+            indexFormat_,
+            0
+        );
+
+        // 정점과 인덱스를 삼각형 목록으로 해석하도록 입력 조립기 단계의 토폴로지 설정
         context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-        // Draw call 호출
-        context->Draw(vertexCount_, 0);
+        // 인덱스 버퍼에 저장된 순서에 따라 메쉬 Draw Call
+        context->DrawIndexed(indexCount_, 0, 0);
 	}
 
     bool D3D11Mesh::IsInitialized() const noexcept
     {
-        return vertexBuffer_ && inputLayout_;
+        return vertexBuffer_ && indexBuffer_ && inputLayout_ &&
+            vertexStride_ > 0 && vertexCount_ > 0 && indexCount_ > 0 && indexFormat_ != DXGI_FORMAT_UNKNOWN;;
     }
 
     void D3D11Mesh::Shutdown() noexcept
     {
         inputLayout_.Reset();
         vertexBuffer_.Reset();
+        indexBuffer_.Reset();
 
         vertexStride_ = 0;
         vertexCount_ = 0;
+        indexCount_ = 0;
+        indexFormat_ = DXGI_FORMAT_UNKNOWN;
     }
 }

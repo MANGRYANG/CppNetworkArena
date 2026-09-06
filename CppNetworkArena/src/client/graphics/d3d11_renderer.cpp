@@ -341,14 +341,18 @@ namespace cna::client
             { { -0.35f,  0.35f }, { 0.10f, 0.75f, 1.00f, 1.00f } },
             { {  0.35f,  0.35f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
             { { -0.35f, -0.35f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
-
-            { { -0.35f, -0.35f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
-            { {  0.35f,  0.35f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
             { {  0.35f, -0.35f }, { 1.00f, 0.75f, 0.20f, 1.00f } }
         };
 
+        // 화면 중앙에 출력할 그래픽스 파이프라인 검증용 사각형의 인덱스 목록
+        const std::vector<std::uint16_t> TestRectangleIndices =
+        {
+            0, 1, 2,
+            2, 1, 3
+        };
+
         // 그래픽스 파이프라인 검증용 사각형 메쉬 초기화
-        if (!testQuadMesh_.Initialize(device_.Get(), TestRectangleVertices, InputLayoutDescs, ARRAYSIZE(InputLayoutDescs), shaderProgram_.GetVertexShaderBlob()))
+        if (!testQuadMesh_.Initialize(device_.Get(), TestRectangleVertices, TestRectangleIndices, InputLayoutDescs, ARRAYSIZE(InputLayoutDescs), shaderProgram_.GetVertexShaderBlob()))
         {
             return false;
         }
