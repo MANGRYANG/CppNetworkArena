@@ -1,5 +1,8 @@
 #pragma once
 
+#include "d3d11_mesh.h"
+#include "d3d11_shader_program.h"
+
 #include <Windows.h>
 
 #include <d3d11.h>
@@ -31,6 +34,10 @@ namespace cna::client
         // 프레임을 그리기 전 배경색으로 채우는 함수
         bool BeginFrame(float r, float g, float b, float a);
 
+        // 기본 2D 그래픽스 파이프라인을 사용하여 테스트 사각형을 그리는 함수
+        bool DrawTestRectangle();
+
+        // 백 버퍼와 프론트 버퍼를 교체하여 프레임을 출력하는 함수
         bool EndFrame();
 
         // 생성된 DirectX 11 그래픽 자원을 정리하는 함수
@@ -43,6 +50,12 @@ namespace cna::client
         // 렌더 타겟 뷰를 생성하는 함수
         bool CreateRenderTargetView();
 
+        // 2D 셰이더 프로그램 및 사각형 메쉬를 초기화하는 함수
+        bool CreateGraphicsPipeline();
+
+        // 뷰포트 설정 함수
+        void SetViewport(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept;
+
         // GPU 리소스를 생성하는 객체
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
         // 리소스를 조작하고 GPU에 Draw 명령을 내리는 객체
@@ -52,6 +65,12 @@ namespace cna::client
 
         // 렌더 타겟을 가리키는 뷰
         Microsoft::WRL::ComPtr<ID3D11RenderTargetView> renderTargetView_;
+
+        // 2D 정점 셰이더와 픽셀 셰이더를 관리하는 셰이더 프로그램
+        D3D11ShaderProgram shaderProgram_;
+
+        // 그래픽스 파이프라인 검증용 사각형 메쉬
+        D3D11Mesh testQuadMesh_;
 
         // DirectX 11 그래픽 자원의 초기화 여부를 저장하는 플래그
         bool initialized_ = false;

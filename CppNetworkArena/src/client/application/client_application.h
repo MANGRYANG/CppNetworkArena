@@ -12,7 +12,7 @@
 
 namespace cna::client
 {
-    // Win32 창과 네트워크 클라이언트의 실행 생명 주기를 관리하는 애플리케이션 클래스
+    // Win32 윈도우, DirectX 11 렌더러, 네트워크 및 게임 상태의 생명 주기를 관리하는 애플리케이션 클래스
     class ClientApplication final
     {
     public:
@@ -27,7 +27,7 @@ namespace cna::client
         ClientApplication(ClientApplication&&) = delete;
         ClientApplication& operator=(ClientApplication&&) = delete;
 
-        // 윈도우 및 네트워크를 초기화하고 애플리케이션 실행 루프를 시작하는 함수
+        // 윈도우, 렌더러 및 네트워크를 초기화하고 애플리케이션 실행 루프를 시작하는 함수
         int Run();
 
     private:
@@ -37,7 +37,7 @@ namespace cna::client
         // 대기 중인 네트워크 완료 이벤트를 현재 스레드에서 처리하는 함수
         void ProcessNetworkEvents();
 
-        // 애플리케이션의 네트워크 연결과 게임 상태를 정리하는 함수
+        // 애플리케이션이 소유한 자원을 정리하는 함수
         void Shutdown() noexcept;
 
         // 오류 코드와 함께 애플리케이션 실행 루프 종료를 요청하는 함수

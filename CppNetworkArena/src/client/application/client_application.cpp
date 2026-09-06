@@ -21,9 +21,6 @@ namespace
 
     // DirectX 렌더링 영역으로 사용할 기본 클라이언트 높이
     constexpr int InitialClientHeight = 720;
-
-    // 렌더링 루프가 추가되기 전 CPU 점유율을 제한하는 메시지 대기 시간
-    constexpr DWORD MessageWaitMilliseconds = 1;
 }
 
 namespace cna::client
@@ -164,6 +161,8 @@ namespace cna::client
             networkClient_->Disconnect();
         }
 
+        renderer_.Shutdown();
+
         // Win32 플랫폼 윈도우 제거
         window_.Destroy();
 
@@ -301,6 +300,16 @@ namespace cna::client
         if (!renderer_.BeginFrame(0.05f, 0.08f, 0.12f, 1.0f))
         {
             std::cerr << "[GameClient] Failed to clear backbuffer" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        // 기본 2D 그래픽스 파이프라인 검증용 사각형 출력
+        if (!renderer_.DrawTestRectangle())
+        {
+            std::cerr << "[GameClient] Failed to draw test rectangle" << '\n';
 
             RequestExit(1);
 

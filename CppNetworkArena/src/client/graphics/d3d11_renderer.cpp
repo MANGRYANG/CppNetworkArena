@@ -1,17 +1,77 @@
 #include "d3d11_renderer.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <string>
 #include <string_view>
 
 namespace
 {
+    // 위치 및 색상으로 구성된 2D 정점 데이터 구조체
+    struct Vertex2D final
+    {
+        float position[2];
+        float color[4];
+    };
+
+    // Vertex2D 구조체에 대응하는 Input Layout 설명자 배열
+    const D3D11_INPUT_ELEMENT_DESC InputLayoutDescs[] =
+    {
+        {
+            "POSITION",
+            0,
+            DXGI_FORMAT_R32G32_FLOAT,
+            0,
+            0,
+            D3D11_INPUT_PER_VERTEX_DATA,
+            0
+        },
+        {
+            "COLOR",
+            0,
+            DXGI_FORMAT_R32G32B32A32_FLOAT,
+            0,
+            D3D11_APPEND_ALIGNED_ELEMENT,
+            D3D11_INPUT_PER_VERTEX_DATA,
+            0
+        }
+    };
+
     // 렌더러가 요구하는 그래픽 카드의 하드웨어 기능 수준 목록
     constexpr D3D_FEATURE_LEVEL featureLevels[] =
     {
         D3D_FEATURE_LEVEL_11_0
     };
+
+    // Windows 환경에서의 최대 경로 길이를 포함할 수 있는 문자열 버퍼 크기 설정
+    constexpr DWORD MaxExecutablePathLength = 32768;
+
+    // 현재 프로세스의 실행 파일이 위치한 디렉터리 경로를 반환하는 함수
+    std::filesystem::path GetExecutableDirectory()
+    {
+        std::wstring executablePathBuffer(MaxExecutablePathLength, L'\0');
+
+        // 현재 프로세스의 실행 파일 경로 저장
+        const DWORD executablePathLength = GetModuleFileNameW
+        (
+            nullptr,
+            executablePathBuffer.data(),
+            static_cast<DWORD>(executablePathBuffer.size())
+        );
+
+        if (executablePathLength == 0 || executablePathLength >= static_cast<DWORD>(executablePathBuffer.size()))
+        {
+            return {};
+        }
+
+        // 경로 버퍼 크기 재조정
+        executablePathBuffer.resize(executablePathLength);
+
+        // 실행 파일이 위치한 디렉터리 경로 반환
+        return std::filesystem::path(executablePathBuffer).parent_path();
+    }
 }
 
 namespace cna::client
@@ -47,6 +107,18 @@ namespace cna::client
             return false;
         }
 
+        // 2D 셰이더 프로그램 및 사각형 메쉬 초기화
+        if (!CreateGraphicsPipeline())
+        {
+            // DirectX 11 자원 정리 후 실패 처리
+            Shutdown();
+
+            return false;
+        }
+
+        // 클라이언트 영역 크기에 맞추어 뷰포트 설정
+        SetViewport(clientWidth, clientHeight);
+
         initialized_ = true;
 
         return true;
@@ -81,6 +153,23 @@ namespace cna::client
         return true;
     }
 
+    bool D3D11Renderer::DrawTestRectangle()
+    {
+        // 사각형 출력에 필요한 파이프라인 자원이 준비되지 않은 경우 실패 처리
+        if (!initialized_ || !deviceContext_ || !shaderProgram_.IsInitialized() || !testQuadMesh_.IsInitialized())
+        {
+            return false;
+        }
+
+        // 정점 및 픽셀 셰이더를 그래픽스 파이프라인에 바인딩
+        shaderProgram_.Bind(deviceContext_.Get());
+
+        // Draw call 호출
+        testQuadMesh_.Draw(deviceContext_.Get());
+
+        return true;
+    }
+
     bool D3D11Renderer::EndFrame()
     {
         // 스왑 체인에 필요한 그래픽 자원이 준비되지 않은 경우 실패 처리
@@ -110,6 +199,8 @@ namespace cna::client
             deviceContext_->ClearState();
         }
 
+        testQuadMesh_.Shutdown();
+        shaderProgram_.Shutdown();
         renderTargetView_.Reset();
         swapChain_.Reset();
         deviceContext_.Reset();
@@ -156,9 +247,9 @@ namespace cna::client
         UINT createDeviceFlags = 0;
 
         // Debug 모드로 빌드하는 경우 debug layer 기능 플래그 추가
-    #if defined(_DEBUG)
-            createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
-    #endif
+#if defined(_DEBUG)
+        createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
 
         // 그래픽 카드 검사 후 최종적으로 선택될 기능 수준을 담는 변수
         D3D_FEATURE_LEVEL createdFeatureLevel = {};
@@ -222,5 +313,67 @@ namespace cna::client
         }
 
         return true;
+    }
+
+    bool D3D11Renderer::CreateGraphicsPipeline()
+    {
+        // 현재 프로세스의 실행 파일이 위치하는 디렉터리 경로 계산
+        const std::filesystem::path executableDirectory = GetExecutableDirectory();
+
+        // 디렉터리가 비어 있는 경우 실패 처리
+        if (executableDirectory.empty())
+        {
+            return false;
+        }
+
+        // 셰이더 디렉터리 경로 계산
+        const std::filesystem::path shaderDirectory = executableDirectory/L"shaders";
+
+        // 셰이더 파일을 기반으로 셰이더 프로그램 초기화
+        if (!shaderProgram_.Initialize(device_.Get(), shaderDirectory/L"VertexShader.hlsl", shaderDirectory/L"PixelShader.hlsl"))
+        {
+            return false;
+        }
+
+        // 화면 중앙에 출력할 그래픽스 파이프라인 검증용 사각형의 정점 목록
+        const std::vector<Vertex2D> TestRectangleVertices =
+        {
+            { { -0.35f,  0.35f }, { 0.10f, 0.75f, 1.00f, 1.00f } },
+            { {  0.35f,  0.35f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
+            { { -0.35f, -0.35f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
+
+            { { -0.35f, -0.35f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
+            { {  0.35f,  0.35f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
+            { {  0.35f, -0.35f }, { 1.00f, 0.75f, 0.20f, 1.00f } }
+        };
+
+        // 그래픽스 파이프라인 검증용 사각형 메쉬 초기화
+        if (!testQuadMesh_.Initialize(device_.Get(), TestRectangleVertices, InputLayoutDescs, ARRAYSIZE(InputLayoutDescs), shaderProgram_.GetVertexShaderBlob()))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    void D3D11Renderer::SetViewport(const std::uint32_t clientWidth, const std::uint32_t clientHeight) noexcept
+    {
+        // 뷰포트의 차원을 정의하는 구조체
+        D3D11_VIEWPORT viewport = {};
+        // 뷰포트 영역의 Top-Left X 좌표를 0으로 고정
+        viewport.TopLeftX = 0.0f;
+        // 뷰포트 영역의 Top-Left Y 좌표를 0으로 고정
+        viewport.TopLeftY = 0.0f;
+        // 뷰포트의 가로 픽셀 크기 설정
+        viewport.Width = static_cast<float>(clientWidth);
+        // 뷰포트의 세로 픽셀 크기 설정
+        viewport.Height = static_cast<float>(clientHeight);
+        // 뷰포트의 최소 깊이 값 설정
+        viewport.MinDepth = 0.0f;
+        // 뷰포트의 최대 깊이 값 설정
+        viewport.MaxDepth = 1.0f;
+
+        // 래스터라이저 단계에 뷰포트를 바인딩
+        deviceContext_->RSSetViewports(1, &viewport);
     }
 }

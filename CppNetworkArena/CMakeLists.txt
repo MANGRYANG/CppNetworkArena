@@ -84,6 +84,25 @@ set_target_properties(GameServer PROPERTIES FOLDER "Apps")
 # Client
 # ---------------------------------------------------------------------------------------------
 
+# 원본 HLSL 셰이더 파일들이 위치한 소스 디렉터리 경로 정의
+set(GameClientShaderSourceDirectory
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/client/graphics/shaders"
+)
+
+# 셰이더 컴파일 결과물이 저장될 출력 디렉터리 경로 정의
+set(GameClientShaderOutputDirectory
+    "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+)
+
+# 셰이더 파일 목록 정의
+set(GameClientShaderSources
+    "${GameClientShaderSourceDirectory}/VertexShader.hlsl"
+    "${GameClientShaderSourceDirectory}/PixelShader.hlsl"
+)
+
+# HLSL 파일의 속성을 변경하여 직접 컴파일 시도 차단
+set_source_files_properties(${GameClientShaderSources} PROPERTIES HEADER_FILE_ONLY TRUE)
+
 # 클라이언트 실행 파일 생성 (GameClient.exe)
 add_executable(GameClient
     src/client/main.cpp
@@ -91,13 +110,50 @@ add_executable(GameClient
     src/client/application/client_application.h
     src/client/game/client_game_state.cpp
     src/client/game/client_game_state.h
+    src/client/graphics/d3d11_mesh.cpp
+    src/client/graphics/d3d11_mesh.h
     src/client/graphics/d3d11_renderer.cpp
     src/client/graphics/d3d11_renderer.h
+    src/client/graphics/d3d11_shader_program.cpp
+    src/client/graphics/d3d11_shader_program.h
     src/client/network/network_client.cpp
     src/client/network/network_client.h
     src/client/platform/win32_window.cpp
     src/client/platform/win32_window.h
+    ${GameClientShaderSources}
 )
+
+# HLSL 셰이더 파일이 변경되면 빌드 디렉터리의 shaders 폴더로 복사
+add_custom_command(
+    OUTPUT
+        "${GameClientShaderOutputDirectory}/VertexShader.hlsl"
+        "${GameClientShaderOutputDirectory}/PixelShader.hlsl"
+    COMMAND
+        ${CMAKE_COMMAND} -E make_directory
+        "${GameClientShaderOutputDirectory}"
+    COMMAND
+        ${CMAKE_COMMAND} -E copy_if_different
+        "${GameClientShaderSourceDirectory}/VertexShader.hlsl"
+        "${GameClientShaderOutputDirectory}/VertexShader.hlsl"
+    COMMAND
+        ${CMAKE_COMMAND} -E copy_if_different
+        "${GameClientShaderSourceDirectory}/PixelShader.hlsl"
+        "${GameClientShaderOutputDirectory}/PixelShader.hlsl"
+    DEPENDS
+        ${GameClientShaderSources}
+    COMMENT "GameClient HLSL 셰이더 파일 복사"
+    VERBATIM
+)
+
+# HLSL 셰이더 파일 복사 작업을 실행할 커스텀 빌드 타겟(GameClientShaders) 추가
+add_custom_target(GameClientShaders
+    DEPENDS
+        "${GameClientShaderOutputDirectory}/VertexShader.hlsl"
+        "${GameClientShaderOutputDirectory}/PixelShader.hlsl"
+)
+
+# GameClient 타겟이 GameClientShaders 타겟 작업에 의존하도록 설정
+add_dependencies(GameClient GameClientShaders)
 
 # GameClient 내부 전용 헤더 검색 경로 추가
 target_include_directories(GameClient
@@ -119,6 +175,7 @@ target_link_libraries(GameClient
         Boost::asio
         user32
         d3d11
+        d3dcompiler
 )
 
 # Visual Studio에서 GameClient 타깃이 Apps 폴더 아래에 표시되도록 설정
