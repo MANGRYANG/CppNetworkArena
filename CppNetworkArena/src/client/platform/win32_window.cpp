@@ -1,6 +1,7 @@
 #include "win32_window.h"
 
 #include <string>
+#include <utility>
 
 namespace cna::client
 {
@@ -163,6 +164,11 @@ namespace cna::client
         }
     }
 
+    void Win32Window::SetResizeCallback(ResizeCallback callback) noexcept
+    {
+        resizeCallback_ = std::move(callback);
+    }
+
     LRESULT CALLBACK Win32Window::StaticWindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
         Win32Window* window = nullptr;
@@ -224,6 +230,34 @@ namespace cna::client
 
             // 기본 윈도우 프로시저로 전달
             return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+
+        case WM_SIZE:               // 윈도우 크기가 변경되었을 때
+        {
+            // 윈도우가 최소화된 경우
+            if (wParam == SIZE_MINIMIZED)
+            {
+                return 0;
+            }
+
+            // 변경된 클라이언트 너비 추출
+            const std::uint32_t clientWidth = static_cast<std::uint32_t>(LOWORD(lParam));
+            // 변경된 클라이언트 높이 추출
+            const std::uint32_t clientHeight = static_cast<std::uint32_t>(HIWORD(lParam));
+
+            // 변경된 클라이언트 크기 검증
+            if (clientWidth == 0 || clientHeight == 0)
+            {
+                return 0;
+            }
+
+            // 클라이언트 영역 크기 변경 이벤트 전달
+            if (resizeCallback_)
+            {
+                resizeCallback_(clientWidth, clientHeight);
+            }
+
+            return 0;
+        }
 
         default:
             // 기본 윈도우 프로시저로 전달

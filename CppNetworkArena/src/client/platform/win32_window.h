@@ -2,6 +2,8 @@
 
 #include <Windows.h>
 
+#include <cstdint>
+#include <functional>
 #include <string_view>
 
 namespace cna::client
@@ -10,6 +12,9 @@ namespace cna::client
     class Win32Window final
     {
     public:
+        // 클라이언트 영역 크기 변경 이벤트를 전달하는 콜백 타입
+        using ResizeCallback = std::function<void(std::uint32_t clientWidth, std::uint32_t clientHeight)>;
+
         explicit Win32Window(HINSTANCE hInstance) noexcept;
         ~Win32Window();
 
@@ -33,6 +38,9 @@ namespace cna::client
         // 운영체제 메시지를 확인하여 처리하는 함수
         void ProcessMessages(bool& running);
 
+        // 클라이언트 영역 크기 변경 콜백을 설정하는 함수
+        void SetResizeCallback(ResizeCallback callback) noexcept;
+
         // 생성된 윈도우의 핸들을 반환하는 함수
         HWND GetHandle() const noexcept;
 
@@ -54,6 +62,9 @@ namespace cna::client
 
         // 윈도우 클래스명
         const wchar_t* WindowClassName = L"CNAGameClientWindow";
+
+        // 클라이언트 영역 크기 변경 이벤트를 전달하는 콜백
+        ResizeCallback resizeCallback_;
 
         // 현재 객체의 Win32 윈도우 클래스 등록 여부
         bool classRegistered_ = false;

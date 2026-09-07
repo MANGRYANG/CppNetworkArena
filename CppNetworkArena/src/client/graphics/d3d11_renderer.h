@@ -40,6 +40,9 @@ namespace cna::client
         // 백 버퍼와 프론트 버퍼를 교체하여 프레임을 출력하는 함수
         bool EndFrame();
 
+        // 스왑 체인에 등록된 클라이언트 영역 크기를 변경하는 함수
+        bool Resize(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept;
+
         // 생성된 DirectX 11 그래픽 자원을 정리하는 함수
         void Shutdown() noexcept;
 

@@ -8,6 +8,7 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/system/error_code.hpp>
 
+#include <cstdint>
 #include <memory>
 
 namespace cna::client
@@ -57,6 +58,9 @@ namespace cna::client
 
         // 월드 상태 스냅샷 수신 이벤트를 처리하는 함수
         void HandleWorldStateSnapshot(const cna::network::WorldStateSnapshot& snapshot);
+
+        // 클라이언트 영역 크기 변경 이벤트를 처리하는 함수
+        void HandleWindowResized(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept;
 
         // 애플리케이션 내부 데이터 및 상태를 갱신하는 함수
         void Update();

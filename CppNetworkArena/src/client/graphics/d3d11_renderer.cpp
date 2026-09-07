@@ -189,6 +189,58 @@ namespace cna::client
         return true;
     }
 
+    bool D3D11Renderer::Resize(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept
+    {
+        // 클라이언트 영역 크기 변경에 필요한 자원이 준비되지 않은 경우 실패 처리
+        if (!initialized_ || !device_ || !deviceContext_ || !swapChain_)
+        {
+            return false;
+        }
+
+        // 변경될 클라이언트 영역의 크기가 유효하지 않은 경우 무시
+        if (clientWidth == 0 || clientHeight == 0)
+        {
+            return true;
+        }
+
+        // 출력 병합기 단계에 바인딩되어 있던 렌더 타겟 뷰 해제
+        deviceContext_->OMSetRenderTargets(0, nullptr, nullptr);
+
+        // 현재 등록된 렌더 타겟 뷰 초기화
+        renderTargetView_.Reset();
+
+        // 스왑 체인의 백 버퍼 크기 변경
+        const HRESULT resizeResult = swapChain_->ResizeBuffers
+        (
+            0,                      // 기존 스왑 체인이 가지고 있던 버퍼의 개수 유지
+            clientWidth,            // 새로 적용될 클라이언트 영역 너비
+            clientHeight,           // 새로 적용될 클라이언트 영역 높이
+            DXGI_FORMAT_UNKNOWN,    // 백 버퍼의 픽셀 포맷은 변경하지 않음
+            0                       // 기타 특수 플래그 사용하지 않음
+        );
+
+        // 백 버퍼 크기 변경에 실패한 경우
+        if (FAILED(resizeResult))
+        {
+            initialized_ = false;
+
+            return false;
+        }
+
+        // 변경된 백 버퍼를 기반으로 렌더 타겟 뷰 생성
+        if (!CreateRenderTargetView())
+        {
+            initialized_ = false;
+
+            return false;
+        }
+
+        // 변경된 클라이언트 영역을 기반으로 뷰포트 설정 덮어쓰기
+        SetViewport(clientWidth, clientHeight);
+
+        return true;
+    }
+
     void D3D11Renderer::Shutdown() noexcept
     {
         initialized_ = false;

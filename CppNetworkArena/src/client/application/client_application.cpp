@@ -67,6 +67,15 @@ namespace cna::client
         // Win32 윈도우를 화면에 표시 
         window_.Show();
 
+        // 클라이언트 영역 크기 변경 이벤트 콜백 등록
+        window_.SetResizeCallback
+        (
+            [this](const std::uint32_t clientWidth, const std::uint32_t clientHeight) noexcept
+            {
+                HandleWindowResized(clientWidth, clientHeight);
+            }
+        );
+
         running_ = true;
         exitCode_ = 0;
 
@@ -154,6 +163,9 @@ namespace cna::client
     {
         // 애플리케이션 실행 루프 중지
         running_ = false;
+
+        // 애플리케이션 종료 과정에서 크기 변경 콜백이 렌더러를 호출하지 않도록 콜백 연결 해제
+        window_.SetResizeCallback({});
 
         // 네트워크 연결 해제
         if (networkClient_ && (networkClient_->GetConnectionState() != NetworkClient::ConnectionState::Disconnected))
@@ -287,6 +299,27 @@ namespace cna::client
             << ", roomId=" << worldState->roomId
             << ", playerCount=" << worldState->players.size()
             << '\n';
+    }
+
+    void ClientApplication::HandleWindowResized(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept
+    {
+        // 이미 종료가 요청된 경우 크기 변경 이벤트 무시
+        if (!running_)
+        {
+            return;
+        }
+
+        // 변경된 클라이언트 영역 크기에 맞춰 그래픽 자원 재구성
+        if (!renderer_.Resize(clientWidth, clientHeight))
+        {
+            std::cerr
+                << "[GameClient] Failed to resize DirectX 11 renderer"
+                << ": width=" << clientWidth
+                << ", height=" << clientHeight
+                << '\n';
+
+            RequestExit(1);
+        }
     }
 
     void ClientApplication::Update()
