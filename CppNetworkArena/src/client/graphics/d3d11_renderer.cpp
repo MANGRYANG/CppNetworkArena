@@ -1,11 +1,11 @@
 #include "d3d11_renderer.h"
 
+#include <DirectXMath.h>
+
 #include <cstdint>
 #include <filesystem>
-#include <iomanip>
-#include <iostream>
 #include <string>
-#include <string_view>
+#include <vector>
 
 namespace
 {
@@ -15,6 +15,15 @@ namespace
         float position[2];
         float color[4];
     };
+
+    // 투영 변환 행렬을 담을 구조체
+    struct ProjectionData final
+    {
+        DirectX::XMFLOAT4X4 projectionMatrix;
+    };
+
+    // 투영 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
+    static_assert((sizeof(ProjectionData) % 16) == 0, "Constant buffer size must be 16-byte aligned.");
 
     // Vertex2D 구조체에 대응하는 Input Layout 설명자 배열
     const D3D11_INPUT_ELEMENT_DESC InputLayoutDescs[] =
@@ -47,6 +56,14 @@ namespace
 
     // Windows 환경에서의 최대 경로 길이를 포함할 수 있는 문자열 버퍼 크기 설정
     constexpr DWORD MaxExecutablePathLength = 32768;
+
+    // 게임 화면에서 사용할 가상 해상도의 너비
+    constexpr float VirtualScreenWidth = 1280.0f;
+    // 게임 화면에서 사용할 가상 해상도의 높이
+    constexpr float VirtualScreenHeight = 720.0f;
+
+    // 게임 화면에서 유지할 가상 해상도의 종횡비
+    constexpr float VirtualScreenAspectRatio = VirtualScreenWidth / VirtualScreenHeight;
 
     // 현재 프로세스의 실행 파일이 위치한 디렉터리 경로를 반환하는 함수
     std::filesystem::path GetExecutableDirectory()
@@ -116,8 +133,8 @@ namespace cna::client
             return false;
         }
 
-        // 클라이언트 영역 크기에 맞추어 뷰포트 설정
-        SetViewport(clientWidth, clientHeight);
+        // 게임 화면의 종횡비가 클라이언트 영역 내부에 유지되도록 뷰포트 설정
+        SetFixedAspectRatioViewport(clientWidth, clientHeight);
 
         initialized_ = true;
 
@@ -163,6 +180,10 @@ namespace cna::client
 
         // 정점 및 픽셀 셰이더를 그래픽스 파이프라인에 바인딩
         shaderProgram_.Bind(deviceContext_.Get());
+
+        // 정점 셰이더의 상수 버퍼 0번 슬롯에 직교 투영 상수 버퍼 바인딩
+        ID3D11Buffer* const projectionConstantBuffer = projectionConstantBuffer_.Get();
+        deviceContext_->VSSetConstantBuffers(0, 1, &projectionConstantBuffer);
 
         // Draw call 호출
         testQuadMesh_.Draw(deviceContext_.Get());
@@ -236,7 +257,7 @@ namespace cna::client
         }
 
         // 변경된 클라이언트 영역을 기반으로 뷰포트 설정 덮어쓰기
-        SetViewport(clientWidth, clientHeight);
+        SetFixedAspectRatioViewport(clientWidth, clientHeight);
 
         return true;
     }
@@ -387,13 +408,19 @@ namespace cna::client
             return false;
         }
 
+        // 고정된 2D 가상 화면의 직교 투영 상수 버퍼 생성
+        if (!CreateProjectionConstantBuffer())
+        {
+            return false;
+        }
+
         // 화면 중앙에 출력할 그래픽스 파이프라인 검증용 사각형의 정점 목록
         const std::vector<Vertex2D> TestRectangleVertices =
         {
-            { { -0.35f,  0.35f }, { 0.10f, 0.75f, 1.00f, 1.00f } },
-            { {  0.35f,  0.35f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
-            { { -0.35f, -0.35f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
-            { {  0.35f, -0.35f }, { 1.00f, 0.75f, 0.20f, 1.00f } }
+            { { -180.0f,  180.0f }, { 0.10f, 0.75f, 1.00f, 1.00f } },
+            { {  180.0f,  180.0f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
+            { { -180.0f, -180.0f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
+            { {  180.0f, -180.0f }, { 1.00f, 0.75f, 0.20f, 1.00f } }
         };
 
         // 화면 중앙에 출력할 그래픽스 파이프라인 검증용 사각형의 인덱스 목록
@@ -412,18 +439,92 @@ namespace cna::client
         return true;
     }
 
-    void D3D11Renderer::SetViewport(const std::uint32_t clientWidth, const std::uint32_t clientHeight) noexcept
+    bool D3D11Renderer::CreateProjectionConstantBuffer()
     {
+        if (!device_)
+        {
+            return false;
+        }
+
+        // 1280x720 해상도를 기준으로 화면 중앙을 원점으로 하는 직교 투영 행렬 생성
+        const DirectX::XMMATRIX projectionMatrix = DirectX::XMMatrixOrthographicLH(VirtualScreenWidth, VirtualScreenHeight, 0.0f, 1.0f);
+
+        // 투영 변환 행렬 구조체
+        ProjectionData projectionData = {};
+
+        // 투영 변환 행렬 구조체에 직교 투영 행렬 할당
+        DirectX::XMStoreFloat4x4
+        (
+            &projectionData.projectionMatrix,
+            projectionMatrix
+        );
+
+        // 투영 행렬을 저장할 상수 버퍼 설명자 구성
+        D3D11_BUFFER_DESC constantBufferDesc = {};
+        constantBufferDesc.ByteWidth = static_cast<UINT>(sizeof(ProjectionData));
+        constantBufferDesc.Usage = D3D11_USAGE_IMMUTABLE;
+        constantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        constantBufferDesc.CPUAccessFlags = 0;
+        constantBufferDesc.MiscFlags = 0;
+        constantBufferDesc.StructureByteStride = 0;
+
+        // 투영 상수 버퍼를 채울 초기 데이터 구성
+        D3D11_SUBRESOURCE_DATA initialData = {};
+        initialData.pSysMem = &projectionData;
+
+        // 투영 상수 버퍼 생성
+        const HRESULT createConstantBuffer = device_->CreateBuffer
+        (
+            &constantBufferDesc,
+            &initialData,
+            projectionConstantBuffer_.GetAddressOf()
+        );
+
+        // 직교 투영 상수 버퍼 생성 작업의 성공 여부 반환
+        return SUCCEEDED(createConstantBuffer);
+    }
+
+    void D3D11Renderer::SetFixedAspectRatioViewport(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept
+    {
+        // 현재 클라이언트 윈도우의 전체 너비
+        const float clientWidthFloat = static_cast<float>(clientWidth);
+        // 현재 클라이언트 윈도우의 전체 높이
+        const float clientHeightFloat = static_cast<float>(clientHeight);
+
+        // 현재 클라이언트 윈도우의 전체 종횡비
+        const float clientAspectRatio = clientWidthFloat / clientHeightFloat;
+
         // 뷰포트의 차원을 정의하는 구조체
         D3D11_VIEWPORT viewport = {};
-        // 뷰포트 영역의 Top-Left X 좌표를 0으로 고정
-        viewport.TopLeftX = 0.0f;
-        // 뷰포트 영역의 Top-Left Y 좌표를 0으로 고정
-        viewport.TopLeftY = 0.0f;
-        // 뷰포트의 가로 픽셀 크기 설정
-        viewport.Width = static_cast<float>(clientWidth);
-        // 뷰포트의 세로 픽셀 크기 설정
-        viewport.Height = static_cast<float>(clientHeight);
+
+        // 너비 방향으로 남는 영역이 있는 경우
+        if (clientAspectRatio > VirtualScreenAspectRatio)
+        {
+            // 클라이언트 높이를 기준으로 뷰포트의 가로 픽셀 크기 계산
+            viewport.Width = clientHeightFloat * VirtualScreenAspectRatio;
+            // 뷰포트의 세로 픽셀 크기 설정
+            viewport.Height = clientHeightFloat;
+
+            // 필러 박스를 고려한 뷰포트 영역의 Top-Left X 좌표 계산
+            viewport.TopLeftX = (clientWidthFloat - viewport.Width) * 0.5f;
+            // 뷰포트 영역의 Top-Left Y 좌표는 0으로 고정
+            viewport.TopLeftY = 0.0f;
+        }
+
+        // 높이 방향으로 남는 영역이 있거나 게임 화면의 고정 종횡비와 일치하는 경우
+        else
+        {
+            // 뷰포트의 가로 픽셀 크기 설정
+            viewport.Width = clientWidthFloat;
+            // 클라이언트 너비를 기준으로 뷰포트의 세로 픽셀 크기 계산
+            viewport.Height = clientWidthFloat / VirtualScreenAspectRatio;
+
+            // 뷰포트 영역의 Top-Left X 좌표는 0으로 고정
+            viewport.TopLeftX = 0.0f;
+            // 레터 박스를 고려한 뷰포트 영역의 Top-Left Y 좌표 계산
+            viewport.TopLeftY = (clientHeightFloat - viewport.Height) * 0.5f;
+        }
+        
         // 뷰포트의 최소 깊이 값 설정
         viewport.MinDepth = 0.0f;
         // 뷰포트의 최대 깊이 값 설정

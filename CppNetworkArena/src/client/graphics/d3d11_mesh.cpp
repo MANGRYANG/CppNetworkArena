@@ -44,7 +44,7 @@ namespace cna::client
     bool D3D11Mesh::IsInitialized() const noexcept
     {
         return vertexBuffer_ && indexBuffer_ && inputLayout_ &&
-            vertexStride_ > 0 && vertexCount_ > 0 && indexCount_ > 0 && indexFormat_ != DXGI_FORMAT_UNKNOWN;;
+            vertexStride_ > 0 && vertexCount_ > 0 && indexCount_ > 0 && indexFormat_ != DXGI_FORMAT_UNKNOWN;
     }
 
     void D3D11Mesh::Shutdown() noexcept

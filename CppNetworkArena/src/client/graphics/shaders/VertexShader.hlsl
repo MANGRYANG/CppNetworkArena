@@ -1,3 +1,10 @@
+// 고정된 2D 가상 화면을 클립 공간으로 변환하기 위한 투영 상수 버퍼
+cbuffer ProjectionData : register(b0)
+{
+    row_major matrix projectionMatrix;
+}
+
+// Vertex Shader의 입력으로 전달되는 데이터 구조체
 struct VertexInput
 {
     float2 position : POSITION;
@@ -18,8 +25,12 @@ PixelInput VSMain(VertexInput input)
 {
     PixelInput output;
     
-    // 2D 정점 위치를 래스터라이저 처리를 위한 동차 좌표계로 확장
-    output.position = float4(input.position, 0.0f, 1.0f);
+    // 2D 가상 화면 좌표를 투영 행렬을 사용하여 클립 공간 좌표로 변환
+    output.position = mul
+    (
+        float4(input.position, 0.0f, 1.0f),
+        projectionMatrix
+    );
     
     // 정점 색상을 Pixel Shader로 전달
     output.color = input.color;
