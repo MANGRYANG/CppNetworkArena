@@ -110,6 +110,8 @@ add_executable(GameClient
     src/client/application/client_application.h
     src/client/game/client_game_state.cpp
     src/client/game/client_game_state.h
+    src/client/graphics/camera/camera.cpp
+    src/client/graphics/camera/camera.h
     src/client/graphics/d3d11_mesh.cpp
     src/client/graphics/d3d11_mesh.h
     src/client/graphics/d3d11_renderer.cpp

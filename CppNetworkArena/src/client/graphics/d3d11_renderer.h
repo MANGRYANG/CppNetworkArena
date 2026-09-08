@@ -1,5 +1,6 @@
 #pragma once
 
+#include "camera/camera.h"
 #include "d3d11_mesh.h"
 #include "d3d11_shader_program.h"
 
@@ -56,8 +57,8 @@ namespace cna::client
         // 2D 셰이더 프로그램 및 사각형 메쉬를 초기화하는 함수
         bool CreateGraphicsPipeline();
 
-        // 직교 투영 행렬을 저장하는 상수 버퍼를 생성하는 함수
-        bool CreateProjectionConstantBuffer();
+        // 고정 카메라를 초기화하고 뷰-투영 변환 행렬을 담는 상수 버퍼를 생성하는 함수
+        bool CreateCameraConstantBuffer();
 
         // 클라이언트 영역 내부에 게임 화면 종횡비가 유지되도록 뷰포트를 설정하는 함수
         void SetFixedAspectRatioViewport(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept;
@@ -72,8 +73,11 @@ namespace cna::client
         // 렌더 타겟을 가리키는 뷰
         Microsoft::WRL::ComPtr<ID3D11RenderTargetView> renderTargetView_;
 
-        // 직교 투영 행렬을 저장하는 상수 버퍼
-        Microsoft::WRL::ComPtr<ID3D11Buffer> projectionConstantBuffer_;
+        // XY 월드 평면을 비스듬히 바라보는 고정 3D 카메라
+        FixedCamera3D fixedCamera_;
+
+        // 고정 카메라의 뷰-투영 결합 행렬을 저장하는 상수 버퍼
+        Microsoft::WRL::ComPtr<ID3D11Buffer> cameraConstantBuffer_;
 
         // 2D 정점 셰이더와 픽셀 셰이더를 관리하는 셰이더 프로그램
         D3D11ShaderProgram shaderProgram_;

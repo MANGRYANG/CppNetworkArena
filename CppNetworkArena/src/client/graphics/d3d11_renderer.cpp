@@ -16,14 +16,14 @@ namespace
         float color[4];
     };
 
-    // 투영 변환 행렬을 담을 구조체
-    struct ProjectionData final
+    // 고정 카메라의 뷰-투영 결합 변환 행렬을 담는 구조체
+    struct CameraData final
     {
-        DirectX::XMFLOAT4X4 projectionMatrix;
+        DirectX::XMFLOAT4X4 viewProjectionMatrix;
     };
 
-    // 투영 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
-    static_assert((sizeof(ProjectionData) % 16) == 0, "Constant buffer size must be 16-byte aligned.");
+    // 뷰-투영 결합 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
+    static_assert((sizeof(CameraData) % 16) == 0, "Constant buffer size must be 16-byte aligned.");
 
     // Vertex2D 구조체에 대응하는 Input Layout 설명자 배열
     const D3D11_INPUT_ELEMENT_DESC InputLayoutDescs[] =
@@ -173,7 +173,7 @@ namespace cna::client
     bool D3D11Renderer::DrawTestRectangle()
     {
         // 사각형 출력에 필요한 파이프라인 자원이 준비되지 않은 경우 실패 처리
-        if (!initialized_ || !deviceContext_ || !shaderProgram_.IsInitialized() || !testQuadMesh_.IsInitialized())
+        if (!initialized_ || !deviceContext_ || !cameraConstantBuffer_ || !shaderProgram_.IsInitialized() || !testQuadMesh_.IsInitialized())
         {
             return false;
         }
@@ -181,9 +181,9 @@ namespace cna::client
         // 정점 및 픽셀 셰이더를 그래픽스 파이프라인에 바인딩
         shaderProgram_.Bind(deviceContext_.Get());
 
-        // 정점 셰이더의 상수 버퍼 0번 슬롯에 직교 투영 상수 버퍼 바인딩
-        ID3D11Buffer* const projectionConstantBuffer = projectionConstantBuffer_.Get();
-        deviceContext_->VSSetConstantBuffers(0, 1, &projectionConstantBuffer);
+        // 정점 셰이더의 상수 버퍼 0번 슬롯에 카메라 상수 버퍼 바인딩
+        ID3D11Buffer* const cameraConstantBuffer = cameraConstantBuffer_.Get();
+        deviceContext_->VSSetConstantBuffers(0, 1, &cameraConstantBuffer);
 
         // Draw call 호출
         testQuadMesh_.Draw(deviceContext_.Get());
@@ -273,6 +273,7 @@ namespace cna::client
         }
 
         testQuadMesh_.Shutdown();
+        cameraConstantBuffer_.Reset();
         shaderProgram_.Shutdown();
         renderTargetView_.Reset();
         swapChain_.Reset();
@@ -408,8 +409,8 @@ namespace cna::client
             return false;
         }
 
-        // 고정된 2D 가상 화면의 직교 투영 상수 버퍼 생성
-        if (!CreateProjectionConstantBuffer())
+        // 고정 카메라 초기화 및 뷰-투영 변환 행렬을 담는 카메라 상수 버퍼 바인딩
+        if (!CreateCameraConstantBuffer())
         {
             return false;
         }
@@ -417,10 +418,10 @@ namespace cna::client
         // 화면 중앙에 출력할 그래픽스 파이프라인 검증용 사각형의 정점 목록
         const std::vector<Vertex2D> TestRectangleVertices =
         {
-            { { -180.0f,  180.0f }, { 0.10f, 0.75f, 1.00f, 1.00f } },
-            { {  180.0f,  180.0f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
-            { { -180.0f, -180.0f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
-            { {  180.0f, -180.0f }, { 1.00f, 0.75f, 0.20f, 1.00f } }
+            { { -4.0f,  4.0f }, { 0.10f, 0.75f, 1.00f, 1.00f } },
+            { {  4.0f,  4.0f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
+            { { -4.0f, -4.0f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
+            { {  4.0f, -4.0f }, { 1.00f, 0.75f, 0.20f, 1.00f } }
         };
 
         // 화면 중앙에 출력할 그래픽스 파이프라인 검증용 사각형의 인덱스 목록
@@ -439,49 +440,64 @@ namespace cna::client
         return true;
     }
 
-    bool D3D11Renderer::CreateProjectionConstantBuffer()
+    bool D3D11Renderer::CreateCameraConstantBuffer()
     {
         if (!device_)
         {
             return false;
         }
 
-        // 1280x720 해상도를 기준으로 화면 중앙을 원점으로 하는 직교 투영 행렬 생성
-        const DirectX::XMMATRIX projectionMatrix = DirectX::XMMatrixOrthographicLH(VirtualScreenWidth, VirtualScreenHeight, 0.0f, 1.0f);
+        // XY 플레이 평면을 약 60도 각도로 비스듬히 바라보는 고정 카메라 구성
+        const FixedCamera3D::CameraConfig cameraConfig =
+        {
+            { 0.0f, 17.0f, -10.0f },
+            { 0.0f,  0.0f,   0.0f },
+            { 0.0f,  1.0f,   0.0f },
+            DirectX::XM_PIDIV4,
+            VirtualScreenAspectRatio,
+            0.1f,
+            100.0f
+        };
 
-        // 투영 변환 행렬 구조체
-        ProjectionData projectionData = {};
+        // 고정 카메라의 뷰 및 원근 투영 설정 초기화
+        if (!fixedCamera_.Initialize(cameraConfig))
+        {
+            return false;
+        }
 
-        // 투영 변환 행렬 구조체에 직교 투영 행렬 할당
+        // 상수 버퍼에 전달할 카메라 데이터 구성
+        CameraData cameraData = {};
+
+        // 뷰-투영 결합 변환 행렬 구조체에 계산된 변환 행렬 할당
         DirectX::XMStoreFloat4x4
         (
-            &projectionData.projectionMatrix,
-            projectionMatrix
+            &cameraData.viewProjectionMatrix,
+            fixedCamera_.GetViewProjectionMatrix()
         );
 
-        // 투영 행렬을 저장할 상수 버퍼 설명자 구성
+        // 뷰-투영 결합 변환 행렬을 저장할 카메라 상수 버퍼 설명자 구성
         D3D11_BUFFER_DESC constantBufferDesc = {};
-        constantBufferDesc.ByteWidth = static_cast<UINT>(sizeof(ProjectionData));
+        constantBufferDesc.ByteWidth = static_cast<UINT>(sizeof(CameraData));
         constantBufferDesc.Usage = D3D11_USAGE_IMMUTABLE;
         constantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         constantBufferDesc.CPUAccessFlags = 0;
         constantBufferDesc.MiscFlags = 0;
         constantBufferDesc.StructureByteStride = 0;
 
-        // 투영 상수 버퍼를 채울 초기 데이터 구성
+        // 카메라 상수 버퍼를 채울 초기 데이터 구성
         D3D11_SUBRESOURCE_DATA initialData = {};
-        initialData.pSysMem = &projectionData;
+        initialData.pSysMem = &cameraData;
 
-        // 투영 상수 버퍼 생성
-        const HRESULT createConstantBuffer = device_->CreateBuffer
+        // 고정 카메라의 뷰-투영 결합 행렬을 저장하는 상수 버퍼 생성
+        const HRESULT createConstantBufferResult = device_->CreateBuffer
         (
             &constantBufferDesc,
             &initialData,
-            projectionConstantBuffer_.GetAddressOf()
+            cameraConstantBuffer_.GetAddressOf()
         );
 
-        // 직교 투영 상수 버퍼 생성 작업의 성공 여부 반환
-        return SUCCEEDED(createConstantBuffer);
+        // 카메라 상수 버퍼 생성 작업의 성공 여부 반환
+        return SUCCEEDED(createConstantBufferResult);
     }
 
     void D3D11Renderer::SetFixedAspectRatioViewport(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept

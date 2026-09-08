@@ -1,7 +1,7 @@
-// 고정된 2D 가상 화면을 클립 공간으로 변환하기 위한 투영 상수 버퍼
-cbuffer ProjectionData : register(b0)
+// 3D 월드 공간을 클립 공간으로 변환하기 위한 카메라 상수 버퍼
+cbuffer CameraData : register(b0)
 {
-    row_major matrix projectionMatrix;
+    row_major matrix viewProjectionMatrix;
 }
 
 // Vertex Shader의 입력으로 전달되는 데이터 구조체
@@ -25,11 +25,11 @@ PixelInput VSMain(VertexInput input)
 {
     PixelInput output;
     
-    // 2D 가상 화면 좌표를 투영 행렬을 사용하여 클립 공간 좌표로 변환
+    // 월드 공간 좌표를 뷰-투영 결합 행렬을 사용하여 클립 공간으로 변환
     output.position = mul
     (
-        float4(input.position, 0.0f, 1.0f),
-        projectionMatrix
+        float4(input.position.x, 0.0f, input.position.y, 1.0f),
+        viewProjectionMatrix
     );
     
     // 정점 색상을 Pixel Shader로 전달
