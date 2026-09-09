@@ -9,10 +9,10 @@
 
 namespace
 {
-    // 위치 및 색상으로 구성된 2D 정점 데이터 구조체
-    struct Vertex2D final
+    // 위치 및 색상으로 구성된 3D 정점 데이터 구조체
+    struct Vertex3D final
     {
-        float position[2];
+        float position[3];
         float color[4];
     };
 
@@ -25,13 +25,13 @@ namespace
     // 뷰-투영 결합 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
     static_assert((sizeof(CameraData) % 16) == 0, "Constant buffer size must be 16-byte aligned.");
 
-    // Vertex2D 구조체에 대응하는 Input Layout 설명자 배열
+    // Vertex3D 구조체에 대응하는 Input Layout 설명자 배열
     const D3D11_INPUT_ELEMENT_DESC InputLayoutDescs[] =
     {
         {
             "POSITION",
             0,
-            DXGI_FORMAT_R32G32_FLOAT,
+            DXGI_FORMAT_R32G32B32_FLOAT,
             0,
             0,
             D3D11_INPUT_PER_VERTEX_DATA,
@@ -514,12 +514,12 @@ namespace cna::client
         }
 
         // 화면 중앙에 출력할 그래픽스 파이프라인 검증용 사각형의 정점 목록
-        const std::vector<Vertex2D> TestRectangleVertices =
+        const std::vector<Vertex3D> TestRectangleVertices =
         {
-            { { -4.0f,  4.0f }, { 0.10f, 0.75f, 1.00f, 1.00f } },
-            { {  4.0f,  4.0f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
-            { { -4.0f, -4.0f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
-            { {  4.0f, -4.0f }, { 1.00f, 0.75f, 0.20f, 1.00f } }
+            { { -4.0f,  4.0f, 0.0f }, { 0.10f, 0.75f, 1.00f, 1.00f } },
+            { {  4.0f,  4.0f, 0.0f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
+            { { -4.0f, -4.0f, 0.0f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
+            { {  4.0f, -4.0f, 0.0f }, { 1.00f, 0.75f, 0.20f, 1.00f } }
         };
 
         // 화면 중앙에 출력할 그래픽스 파이프라인 검증용 사각형의 인덱스 목록

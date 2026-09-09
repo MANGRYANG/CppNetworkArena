@@ -7,7 +7,7 @@ cbuffer CameraData : register(b0)
 // Vertex Shader의 입력으로 전달되는 데이터 구조체
 struct VertexInput
 {
-    float2 position : POSITION;
+    float3 position : POSITION;
     float4 color : COLOR;
 };
 
@@ -28,7 +28,7 @@ PixelInput VSMain(VertexInput input)
     // 월드 공간 좌표를 뷰-투영 결합 행렬을 사용하여 클립 공간으로 변환
     output.position = mul
     (
-        float4(input.position, 0.0f, 1.0f),
+        float4(input.position, 1.0f),
         viewProjectionMatrix
     );
     
