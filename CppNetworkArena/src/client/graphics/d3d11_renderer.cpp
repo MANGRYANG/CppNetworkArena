@@ -153,7 +153,7 @@ namespace cna::client
     bool D3D11Renderer::BeginFrame(float r, float g, float b, float a)
     {
         // 렌더링에 필요한 그래픽 자원이 준비되지 않은 경우 실패 처리
-        if (!initialized_ || !deviceContext_ || !renderTargetView_)
+        if (!initialized_ || !deviceContext_ || !renderTargetView_ || !depthStencilView_)
         {
             return false;
         }
