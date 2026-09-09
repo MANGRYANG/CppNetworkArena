@@ -133,7 +133,7 @@ namespace cna::client
             return false;
         }
 
-        // 2D 셰이더 프로그램 및 사각형 메쉬 초기화
+        // 셰이더 프로그램 및 사각형 메쉬 초기화
         if (!CreateGraphicsPipeline())
         {
             // DirectX 11 자원 정리 후 실패 처리

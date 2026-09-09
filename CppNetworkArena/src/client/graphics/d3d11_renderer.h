@@ -35,7 +35,7 @@ namespace cna::client
         // 프레임을 그리기 전 배경색으로 채우는 함수
         bool BeginFrame(float r, float g, float b, float a);
 
-        // 기본 2D 그래픽스 파이프라인을 사용하여 테스트 사각형을 그리는 함수
+        // 기본 그래픽스 파이프라인을 사용하여 테스트 사각형을 그리는 함수
         bool DrawTestRectangle();
 
         // 백 버퍼와 프론트 버퍼를 교체하여 프레임을 출력하는 함수
@@ -57,7 +57,7 @@ namespace cna::client
         // 클라이언트 영역 크기에 대응하는 깊이 스텐실 버퍼와 뷰를 생성하는 함수
         bool CreateDepthStencilBufferAndView(std::uint32_t clientWidth, std::uint32_t clientHeight);
 
-        // 2D 셰이더 프로그램 및 사각형 메쉬를 초기화하는 함수
+        // 셰이더 프로그램 및 사각형 메쉬를 초기화하는 함수
         bool CreateGraphicsPipeline();
 
         // 고정 카메라를 초기화하고 뷰-투영 변환 행렬을 담는 상수 버퍼를 생성하는 함수
@@ -88,7 +88,7 @@ namespace cna::client
         // 고정 카메라의 뷰-투영 결합 행렬을 저장하는 상수 버퍼
         Microsoft::WRL::ComPtr<ID3D11Buffer> cameraConstantBuffer_;
 
-        // 2D 정점 셰이더와 픽셀 셰이더를 관리하는 셰이더 프로그램
+        // 정점 셰이더와 픽셀 셰이더를 관리하는 셰이더 프로그램
         D3D11ShaderProgram shaderProgram_;
 
         // 그래픽스 파이프라인 검증용 사각형 메쉬
