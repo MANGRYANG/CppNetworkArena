@@ -124,6 +124,15 @@ namespace cna::client
             return false;
         }
 
+        // 깊이 스텐실 버퍼 및 뷰 생성
+        if (!CreateDepthStencilBufferAndView(clientWidth, clientHeight))
+        {
+            // DirectX 11 자원 정리 후 실패 처리
+            Shutdown();
+
+            return false;
+        }
+
         // 2D 셰이더 프로그램 및 사각형 메쉬 초기화
         if (!CreateGraphicsPipeline())
         {
@@ -152,12 +161,12 @@ namespace cna::client
         // 화면을 채울 RGBA 색상 데이터 배열을 저장한 배열
         const float clearColor[4] = { r, g, b, a };
 
-        // 출력 병합기 단계에 렌더 타겟 뷰를 바인딩
+        // 출력 병합기 단계에 렌더 타겟 뷰 및 깊이 스텐실 뷰를 바인딩
         deviceContext_->OMSetRenderTargets
         (
             1,
             renderTargetView_.GetAddressOf(),
-            nullptr
+            depthStencilView_.Get()
         );
 
         // 렌더 타겟 뷰가 참조하고 있는 백 버퍼의 모든 픽셀을 지정된 색상으로 초기화
@@ -165,6 +174,15 @@ namespace cna::client
         (
             renderTargetView_.Get(),
             clearColor
+        );
+
+        // 깊이 버퍼의 모든 깊이값을 최대값(1.0f)으로 초기화
+        deviceContext_->ClearDepthStencilView
+        (
+            depthStencilView_.Get(),
+            D3D11_CLEAR_DEPTH,
+            1.0f,
+            0
         );
 
         return true;
@@ -224,11 +242,13 @@ namespace cna::client
             return true;
         }
 
-        // 출력 병합기 단계에 바인딩되어 있던 렌더 타겟 뷰 해제
+        // 출력 병합기 단계에 바인딩되어 있던 렌더 타겟 뷰 및 깊이 스텐실 뷰 해제
         deviceContext_->OMSetRenderTargets(0, nullptr, nullptr);
 
-        // 현재 등록된 렌더 타겟 뷰 초기화
+        // 현재 등록된 렌더 타겟 및 깊이 스텐실 관련 자원 초기화
         renderTargetView_.Reset();
+        depthStencilView_.Reset();
+        depthStencilBuffer_.Reset();
 
         // 스왑 체인의 백 버퍼 크기 변경
         const HRESULT resizeResult = swapChain_->ResizeBuffers
@@ -256,6 +276,14 @@ namespace cna::client
             return false;
         }
 
+        // 변경된 클라이언트 영역 크기에 맞춰 깊이 스텐실 버퍼 및 뷰 생성
+        if (!CreateDepthStencilBufferAndView(clientWidth, clientHeight))
+        {
+            initialized_ = false;
+
+            return false;
+        }
+
         // 변경된 클라이언트 영역을 기반으로 뷰포트 설정 덮어쓰기
         SetFixedAspectRatioViewport(clientWidth, clientHeight);
 
@@ -275,7 +303,11 @@ namespace cna::client
         testQuadMesh_.Shutdown();
         cameraConstantBuffer_.Reset();
         shaderProgram_.Shutdown();
+
         renderTargetView_.Reset();
+        depthStencilView_.Reset();
+        depthStencilBuffer_.Reset();
+
         swapChain_.Reset();
         deviceContext_.Reset();
         device_.Reset();
@@ -356,6 +388,11 @@ namespace cna::client
 
     bool D3D11Renderer::CreateRenderTargetView()
     {
+        if (!device_)
+        {
+            return false;
+        }
+
         // 스왑 체인의 백 버퍼를 임시로 가리키는 스마트 포인터
         Microsoft::WRL::ComPtr<ID3D11Texture2D> backBuffer;
 
@@ -383,6 +420,67 @@ namespace cna::client
         // 렌더 타겟 뷰 생성에 실패한 경우
         if (FAILED(hr))
         {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool D3D11Renderer::CreateDepthStencilBufferAndView(std::uint32_t clientWidth, std::uint32_t clientHeight)
+    {
+        if (!device_ || clientWidth == 0 || clientHeight == 0)
+        {
+            return false;
+        }
+
+        // 각 픽셀에 대한 깊이 스텐실 값을 저장할 텍스처 설명자 구성
+        D3D11_TEXTURE2D_DESC depthStencilBufferDesc = {};
+        depthStencilBufferDesc.Width = clientWidth;
+        depthStencilBufferDesc.Height = clientHeight;
+        // 밉맵 체인을 생성하지 않고 단일 2D 텍스처 데이터 레이아웃으로 설정
+        depthStencilBufferDesc.MipLevels = 1;
+        depthStencilBufferDesc.ArraySize = 1;
+        // 각 픽셀 데이터의 메모리 포맷 지정 (Depth 24비트, Stencil 8비트)
+        depthStencilBufferDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        // 안티앨리어싱을 사용하지 않도록 설정
+        depthStencilBufferDesc.SampleDesc.Count = 1;
+        depthStencilBufferDesc.SampleDesc.Quality = 0;
+        // 리소스의 메모리 접근 패턴 설정 (기본값)
+        depthStencilBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+        // 출력 병합 단계의 깊이 스텐실 대상으로 텍스처를 바인딩
+        depthStencilBufferDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+        // CPU가 텍스처에 직접 엑세스할 수 없도록 설정
+        depthStencilBufferDesc.CPUAccessFlags = 0;
+        // 기타 특수 기능 사용하지 않음
+        depthStencilBufferDesc.MiscFlags = 0;
+
+        // 2D 깊이 스텐실 텍스처 생성
+        HRESULT hr = device_->CreateTexture2D
+        (
+            &depthStencilBufferDesc,
+            nullptr,
+            depthStencilBuffer_.GetAddressOf()
+        );
+
+        // 텍스처 생성에 실패한 경우
+        if (FAILED(hr))
+        {
+            return false;
+        }
+
+        // 깊이 스텐실 텍스처에 대응하는 깊이 스텐실 뷰 생성
+        hr = device_->CreateDepthStencilView
+        (
+            depthStencilBuffer_.Get(),
+            nullptr,
+            depthStencilView_.GetAddressOf()
+        );
+
+        // 깊이 스텐실 뷰 생성에 실패한 경우
+        if (FAILED(hr))
+        {
+            depthStencilBuffer_.Reset();
+
             return false;
         }
 

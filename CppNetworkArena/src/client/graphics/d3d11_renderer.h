@@ -54,6 +54,9 @@ namespace cna::client
         // 렌더 타겟 뷰를 생성하는 함수
         bool CreateRenderTargetView();
 
+        // 클라이언트 영역 크기에 대응하는 깊이 스텐실 버퍼와 뷰를 생성하는 함수
+        bool CreateDepthStencilBufferAndView(std::uint32_t clientWidth, std::uint32_t clientHeight);
+
         // 2D 셰이더 프로그램 및 사각형 메쉬를 초기화하는 함수
         bool CreateGraphicsPipeline();
 
@@ -72,6 +75,12 @@ namespace cna::client
 
         // 렌더 타겟을 가리키는 뷰
         Microsoft::WRL::ComPtr<ID3D11RenderTargetView> renderTargetView_;
+
+        // 각 픽셀에 대한 깊이 값을 저장하는 깊이 스텐실 버퍼
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> depthStencilBuffer_;
+
+        // 깊이 스텐실 버퍼를 가리키는 뷰
+        Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depthStencilView_;
 
         // XY 월드 평면을 비스듬히 바라보는 고정 3D 카메라
         FixedCamera3D fixedCamera_;
