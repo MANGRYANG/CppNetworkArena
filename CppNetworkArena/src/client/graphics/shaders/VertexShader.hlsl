@@ -28,7 +28,7 @@ PixelInput VSMain(VertexInput input)
     // 월드 공간 좌표를 뷰-투영 결합 행렬을 사용하여 클립 공간으로 변환
     output.position = mul
     (
-        float4(input.position.x, 0.0f, input.position.y, 1.0f),
+        float4(input.position, 0.0f, 1.0f),
         viewProjectionMatrix
     );
     
