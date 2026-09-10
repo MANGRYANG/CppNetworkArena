@@ -35,6 +35,9 @@ namespace cna::client
         // 프레임을 그리기 전 배경색으로 채우는 함수
         bool BeginFrame(float r, float g, float b, float a);
 
+        // 전달된 메쉬에 객체별 월드 변환을 적용하여 그리는 함수
+        bool DrawMesh(const D3D11Mesh& mesh, DirectX::FXMMATRIX worldMatrix);
+
         // 기본 그래픽스 파이프라인을 사용하여 테스트 사각형을 그리는 함수
         bool DrawTestRectangle();
 
@@ -63,6 +66,9 @@ namespace cna::client
         // 고정 카메라를 초기화하고 뷰-투영 변환 행렬을 담는 상수 버퍼를 생성하는 함수
         bool CreateCameraConstantBuffer();
 
+        // 객체별 월드 변환 행렬을 전달하기 위한 동적 상수 버퍼를 생성하는 함수
+        bool CreateObjectConstantBuffer();
+
         // 클라이언트 영역 내부에 게임 화면 종횡비가 유지되도록 뷰포트를 설정하는 함수
         void SetFixedAspectRatioViewport(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept;
 
@@ -87,6 +93,9 @@ namespace cna::client
 
         // 고정 카메라의 뷰-투영 결합 행렬을 저장하는 상수 버퍼
         Microsoft::WRL::ComPtr<ID3D11Buffer> cameraConstantBuffer_;
+
+        // 객체별 월드 변환 행렬을 저장하는 상수 버퍼
+        Microsoft::WRL::ComPtr<ID3D11Buffer> objectConstantBuffer_;
 
         // 정점 셰이더와 픽셀 셰이더를 관리하는 셰이더 프로그램
         D3D11ShaderProgram shaderProgram_;

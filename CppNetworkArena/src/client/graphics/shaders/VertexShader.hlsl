@@ -4,6 +4,12 @@ cbuffer CameraData : register(b0)
     row_major matrix viewProjectionMatrix;
 }
 
+// 로컬 공간을 월드 공간으로 변환하기 위한 객체 상수 버퍼
+cbuffer ObjectData : register(b1)
+{
+    row_major matrix worldMatrix;
+}
+
 // Vertex Shader의 입력으로 전달되는 데이터 구조체
 struct VertexInput
 {
@@ -25,10 +31,17 @@ PixelInput VSMain(VertexInput input)
 {
     PixelInput output;
     
+    // 로컬 공간 좌표를 객체별 월드 공간 좌표로 변환
+    const float4 worldPosition = mul
+    (
+        float4(input.position, 1.0f),
+        worldMatrix
+    );
+    
     // 월드 공간 좌표를 뷰-투영 결합 행렬을 사용하여 클립 공간으로 변환
     output.position = mul
     (
-        float4(input.position, 1.0f),
+        worldPosition,
         viewProjectionMatrix
     );
     

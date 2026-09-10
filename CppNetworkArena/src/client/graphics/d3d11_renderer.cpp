@@ -22,8 +22,17 @@ namespace
         DirectX::XMFLOAT4X4 viewProjectionMatrix;
     };
 
+    // 객체별 월드 변환 행렬을 담는 구조체
+    struct ObjectData final
+    {
+        DirectX::XMFLOAT4X4 worldMatrix;
+    };
+
     // 뷰-투영 결합 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
-    static_assert((sizeof(CameraData) % 16) == 0, "Constant buffer size must be 16-byte aligned.");
+    static_assert((sizeof(CameraData) % 16) == 0, "Camera constant buffer size must be 16-byte aligned.");
+
+    // 월드 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
+    static_assert((sizeof(ObjectData) % 16) == 0, "Object constant buffer size must be 16-byte aligned.");
 
     // Vertex3D 구조체에 대응하는 Input Layout 설명자 배열
     const D3D11_INPUT_ELEMENT_DESC InputLayoutDescs[] =
@@ -188,25 +197,82 @@ namespace cna::client
         return true;
     }
 
-    bool D3D11Renderer::DrawTestRectangle()
+    bool D3D11Renderer::DrawMesh(const D3D11Mesh& mesh, DirectX::FXMMATRIX worldMatrix)
     {
-        // 사각형 출력에 필요한 파이프라인 자원이 준비되지 않은 경우 실패 처리
-        if (!initialized_ || !deviceContext_ || !cameraConstantBuffer_ || !shaderProgram_.IsInitialized() || !testQuadMesh_.IsInitialized())
+        // 메쉬 출력에 필요한 파이프라인 자원이 준비되지 않은 경우 실패 처리
+        if (!initialized_ || !deviceContext_ || !cameraConstantBuffer_ || !objectConstantBuffer_ || !shaderProgram_.IsInitialized() || !mesh.IsInitialized())
         {
             return false;
         }
 
+        // 유효하지 않은 월드 변환 행렬인 경우 실패 처리
+        if (DirectX::XMMatrixIsNaN(worldMatrix) || DirectX::XMMatrixIsInfinite(worldMatrix))
+        {
+            return false;
+        }
+
+        // 객체 상수 버퍼의 CPU 쓰기 영역을 획득하기 위한 매핑 결과
+        D3D11_MAPPED_SUBRESOURCE mappedResource = {};
+
+        // 이전 객체 데이터를 폐기하고 새로운 월드 변환 데이터를 기록할 수 있도록 매핑
+        const HRESULT mapResult = deviceContext_->Map
+        (
+            objectConstantBuffer_.Get(),
+            0,
+            D3D11_MAP_WRITE_DISCARD,
+            0,
+            &mappedResource
+        );
+
+        // 객체 상수 버퍼 매핑에 실패한 경우
+        if (FAILED(mapResult))
+        {
+            return false;
+        }
+
+        // 매핑된 객체 상수 버퍼 영역에 월드 변환 행렬 저장
+        ObjectData* const objectData = static_cast<ObjectData*>(mappedResource.pData);
+        DirectX::XMStoreFloat4x4(&objectData->worldMatrix, worldMatrix);
+
+        // 객체 상수 버퍼에 대한 CPU 쓰기 작업 종료
+        deviceContext_->Unmap(objectConstantBuffer_.Get(), 0);
+
         // 정점 및 픽셀 셰이더를 그래픽스 파이프라인에 바인딩
         shaderProgram_.Bind(deviceContext_.Get());
 
+        // 정점 셰이더에 바인딩할 상수 버퍼 목록
+        ID3D11Buffer* const vertexConstantBuffers[] =
+        {
+            cameraConstantBuffer_.Get(),
+            objectConstantBuffer_.Get()
+        };
+
         // 정점 셰이더의 상수 버퍼 0번 슬롯에 카메라 상수 버퍼 바인딩
-        ID3D11Buffer* const cameraConstantBuffer = cameraConstantBuffer_.Get();
-        deviceContext_->VSSetConstantBuffers(0, 1, &cameraConstantBuffer);
+        // 정점 셰이더의 상수 버퍼 1번 슬롯에 객체 상수 버퍼 바인딩
+        deviceContext_->VSSetConstantBuffers(0, ARRAYSIZE(vertexConstantBuffers), vertexConstantBuffers);
 
         // Draw call 호출
-        testQuadMesh_.Draw(deviceContext_.Get());
+        mesh.Draw(deviceContext_.Get());
 
         return true;
+    }
+
+    bool D3D11Renderer::DrawTestRectangle()
+    {
+        // 사각형 메쉬를 XY 기준 8배 확대
+        const DirectX::XMMATRIX scale = DirectX::XMMatrixScaling(8.0f, 8.0f, 1.0f);
+
+        // 사각형 메쉬를 Z축 기준 45도 회전
+        const DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationZ(DirectX::XMConvertToRadians(45.0f));
+
+        // 사각형 메쉬를 X축 기준 +3.0f 이동
+        const DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(3.0f, 0.0f, 0.0f);
+
+        // SRT 순서로 행렬 결합
+        const DirectX::XMMATRIX worldMatrix = scale * rotation * translation;
+
+        // 테스트 사각형에 월드 변환을 적용하여 출력
+        return DrawMesh(testQuadMesh_, worldMatrix);
     }
 
     bool D3D11Renderer::EndFrame()
@@ -513,13 +579,19 @@ namespace cna::client
             return false;
         }
 
-        // 화면 중앙에 출력할 그래픽스 파이프라인 검증용 사각형의 정점 목록
+        // 객체별 월드 변환 행렬을 전달하기 위한 동적 상수 버퍼 생성
+        if (!CreateObjectConstantBuffer())
+        {
+            return false;
+        }
+
+        // 로컬 공간에서 한 변의 길이가 1.0인 테스트 사각형의 정점 목록
         const std::vector<Vertex3D> TestRectangleVertices =
         {
-            { { -4.0f,  4.0f, 0.0f }, { 0.10f, 0.75f, 1.00f, 1.00f } },
-            { {  4.0f,  4.0f, 0.0f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
-            { { -4.0f, -4.0f, 0.0f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
-            { {  4.0f, -4.0f, 0.0f }, { 1.00f, 0.75f, 0.20f, 1.00f } }
+            { { -0.5f,  0.5f, 0.0f }, { 0.10f, 0.75f, 1.00f, 1.00f } },
+            { {  0.5f,  0.5f, 0.0f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
+            { { -0.5f, -0.5f, 0.0f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
+            { {  0.5f, -0.5f, 0.0f }, { 1.00f, 0.75f, 0.20f, 1.00f } }
         };
 
         // 화면 중앙에 출력할 그래픽스 파이프라인 검증용 사각형의 인덱스 목록
@@ -595,6 +667,34 @@ namespace cna::client
         );
 
         // 카메라 상수 버퍼 생성 작업의 성공 여부 반환
+        return SUCCEEDED(createConstantBufferResult);
+    }
+
+    bool D3D11Renderer::CreateObjectConstantBuffer()
+    {
+        if (!device_)
+        {
+            return false;
+        }
+
+        // 매 Draw마다 객체별 월드 변환 행렬을 갱신할 동적 상수 버퍼 설명자 구성
+        D3D11_BUFFER_DESC constantBufferDesc = {};
+        constantBufferDesc.ByteWidth = static_cast<UINT>(sizeof(ObjectData));
+        constantBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+        constantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        constantBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        constantBufferDesc.MiscFlags = 0;
+        constantBufferDesc.StructureByteStride = 0;
+
+        // 초기 데이터 없이 객체 상수 버퍼 생성
+        const HRESULT createConstantBufferResult = device_->CreateBuffer
+        (
+            &constantBufferDesc,
+            nullptr,
+            objectConstantBuffer_.GetAddressOf()
+        );
+
+        // 객체 상수 버퍼 생성 작업의 성공 여부 반환
         return SUCCEEDED(createConstantBufferResult);
     }
 
