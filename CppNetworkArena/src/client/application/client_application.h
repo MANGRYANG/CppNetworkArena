@@ -3,6 +3,7 @@
 #include "game/client_game_state.h"
 #include "graphics/d3d11/d3d11_renderer.h"
 #include "graphics/mesh/mesh_repository.h"
+#include "graphics/render/render_object.h"
 #include "network/network_client.h"
 #include "platform/win32_window.h"
 
@@ -11,6 +12,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace cna::client
 {
@@ -89,6 +91,9 @@ namespace cna::client
 
         // 단위 사각형이 사용하는 공유 메쉬 핸들
         MeshHandle unitQuadMeshHandle_;
+
+        // 화면에 출력할 렌더 객체들을 보관하는 목록
+        std::vector<RenderObject> renderObjects_;
 
         // 애플리케이션 루프의 상태 플래그
         bool running_ = false;

@@ -126,6 +126,9 @@ add_executable(GameClient
     src/client/graphics/mesh/vertex3d.h
     src/client/graphics/mesh/primitives/unit_quad_mesh.cpp
     src/client/graphics/mesh/primitives/unit_quad_mesh.h
+    src/client/graphics/render/render_object.h
+    src/client/graphics/render/transform3d.cpp
+    src/client/graphics/render/transform3d.h
     src/client/network/network_client.cpp
     src/client/network/network_client.h
     src/client/platform/win32_window.cpp

@@ -101,6 +101,29 @@ namespace cna::client
             return 1;
         }
 
+        // 공유 단위 사각형 메쉬를 사용하는 1번 렌더 객체 구성
+        RenderObject firstRectangleObject;
+
+        firstRectangleObject.meshHandle = unitQuadMeshHandle_;
+
+        firstRectangleObject.transform.position = { 3.0f, 0.0f, 0.0f };
+        firstRectangleObject.transform.rotationRadians = { 0.0f, 0.0f, DirectX::XMConvertToRadians(45.0f) };
+        firstRectangleObject.transform.scale = { 8.0f, 8.0f, 1.0f };
+
+        // 렌더링할 객체 목록에 1번 사각형 객체 추가
+        renderObjects_.push_back(firstRectangleObject);
+
+        // 공유 단위 사각형 메쉬를 사용하는 2번 렌더 객체 구성
+        RenderObject secondRectangleObject;
+
+        secondRectangleObject.meshHandle = unitQuadMeshHandle_;
+
+        secondRectangleObject.transform.position = { 0.0f, 1.0f, -2.0f };
+        secondRectangleObject.transform.scale = { 2.0f, 2.0f, 1.0f };
+
+        // 렌더링할 객체 목록에 2번 사각형 객체 추가
+        renderObjects_.push_back(secondRectangleObject);
+
         // Win32 윈도우를 화면에 표시 
         window_.Show();
 
@@ -210,8 +233,12 @@ namespace cna::client
             networkClient_->Disconnect();
         }
 
+        // GPU 메쉬를 참조하는 모든 렌더 객체 제거
+        renderObjects_.clear();
+
         // 단위 사각형 메쉬 핸들 무효화
         unitQuadMeshHandle_ = {};
+
         // GPU 메쉬 소유권 해제
         meshRepository_.Clear();
 
@@ -382,37 +409,35 @@ namespace cna::client
             return false;
         }
 
-        // 저장소에서 현재 유효한 단위 사각형 메쉬 조회
-        const D3D11Mesh* const testRectangleMesh = meshRepository_.FindMesh(unitQuadMeshHandle_);
-
-        // 유효한 단위 사각형 메쉬를 찾지 못한 경우
-        if (!testRectangleMesh)
+        // 등록된 렌더 객체를 순회하며 공유 메쉬와 객체별 월드 변환 적용
+        for (const RenderObject& renderObject : renderObjects_)
         {
-            std::cerr
-                << "[GameClient] Cannot find test rectangle mesh"
-                << '\n';
+            // 렌더 객체가 참조하는 GPU 메쉬 조회
+            const D3D11Mesh* const mesh = meshRepository_.FindMesh(renderObject.meshHandle);
 
-            RequestExit(1);
+            // 렌더 객체가 참조하는 GPU 메쉬를 찾지 못한 경우
+            if (!mesh)
+            {
+                std::cerr
+                    << "[GameClient] Cannot find render object mesh"
+                    << '\n';
 
-            return false;
-        }
+                RequestExit(1);
 
-        // 단위 사각형에 적용할 월드 변환 행렬 계산
-        const DirectX::XMMATRIX testRectangleScale = DirectX::XMMatrixScaling(8.0f, 8.0f, 1.0f);
-        const DirectX::XMMATRIX testRectangleRotation = DirectX::XMMatrixRotationZ(DirectX::XMConvertToRadians(45.0f));
-        const DirectX::XMMATRIX testRectangleTranslation = DirectX::XMMatrixTranslation(3.0f, 0.0f, 0.0f);
-        const DirectX::XMMATRIX testRectangleWorldMatrix = testRectangleScale * testRectangleRotation * testRectangleTranslation;
+                return false;
+            }
 
-        // 메쉬에 월드 변환 행렬 적용 후 그리기
-        if (!renderer_.DrawMesh(*testRectangleMesh, testRectangleWorldMatrix))
-        {
-            std::cerr
-                << "[GameClient] Failed to draw test rectangle"
-                << '\n';
+            // 객체별 월드 변환 행렬을 적용하여 렌더 객체 출력
+            if (!renderer_.DrawMesh(*mesh, renderObject.transform.GetWorldMatrix()))
+            {
+                std::cerr
+                    << "[GameClient] Failed to draw render object"
+                    << '\n';
 
-            RequestExit(1);
+                RequestExit(1);
 
-            return false;
+                return false;
+            }
         }
 
         // 백 버퍼와 프론트 버퍼를 교체하여 화면에 출력
