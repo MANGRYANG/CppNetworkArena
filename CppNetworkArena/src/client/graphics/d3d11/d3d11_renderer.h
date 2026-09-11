@@ -1,6 +1,8 @@
 #pragma once
 
-#include "camera/camera.h"
+#include "graphics/camera/camera.h"
+#include "graphics/mesh/mesh_data.h"
+
 #include "d3d11_mesh.h"
 #include "d3d11_shader_program.h"
 
@@ -11,6 +13,7 @@
 #include <wrl/client.h>
 
 #include <cstdint>
+#include <memory>
 
 namespace cna::client
 {
@@ -35,11 +38,11 @@ namespace cna::client
         // 프레임을 그리기 전 배경색으로 채우는 함수
         bool BeginFrame(float r, float g, float b, float a);
 
+        // 메쉬 데이터를 사용하여 GPU 메쉬 리소스를 생성하는 함수
+        std::unique_ptr<D3D11Mesh> CreateMesh(const MeshData& meshData);
+
         // 전달된 메쉬에 객체별 월드 변환을 적용하여 그리는 함수
         bool DrawMesh(const D3D11Mesh& mesh, DirectX::FXMMATRIX worldMatrix);
-
-        // 기본 그래픽스 파이프라인을 사용하여 테스트 사각형을 그리는 함수
-        bool DrawTestRectangle();
 
         // 백 버퍼와 프론트 버퍼를 교체하여 프레임을 출력하는 함수
         bool EndFrame();
@@ -60,7 +63,7 @@ namespace cna::client
         // 클라이언트 영역 크기에 대응하는 깊이 스텐실 버퍼와 뷰를 생성하는 함수
         bool CreateDepthStencilBufferAndView(std::uint32_t clientWidth, std::uint32_t clientHeight);
 
-        // 셰이더 프로그램 및 사각형 메쉬를 초기화하는 함수
+        // 셰이더 프로그램을 초기화하고 변환 상수 버퍼를 정점 셰이더에 바인딩하는 함수
         bool CreateGraphicsPipeline();
 
         // 고정 카메라를 초기화하고 뷰-투영 변환 행렬을 담는 상수 버퍼를 생성하는 함수
@@ -99,9 +102,6 @@ namespace cna::client
 
         // 정점 셰이더와 픽셀 셰이더를 관리하는 셰이더 프로그램
         D3D11ShaderProgram shaderProgram_;
-
-        // 그래픽스 파이프라인 검증용 사각형 메쉬
-        D3D11Mesh testQuadMesh_;
 
         // DirectX 11 그래픽 자원의 초기화 여부를 저장하는 플래그
         bool initialized_ = false;

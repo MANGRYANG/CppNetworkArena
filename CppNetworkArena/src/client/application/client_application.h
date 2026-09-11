@@ -1,7 +1,8 @@
 #pragma once
 
 #include "game/client_game_state.h"
-#include "graphics/d3d11_renderer.h"
+#include "graphics/d3d11/d3d11_renderer.h"
+#include "graphics/mesh/mesh_repository.h"
 #include "network/network_client.h"
 #include "platform/win32_window.h"
 
@@ -82,6 +83,12 @@ namespace cna::client
 
         // DirectX 11 렌더러
         D3D11Renderer renderer_;
+
+        // 렌더링할 메쉬를 보관하는 메쉬 저장소
+        MeshRepository meshRepository_;
+
+        // 단위 사각형이 사용하는 공유 메쉬 핸들
+        MeshHandle unitQuadMeshHandle_;
 
         // 애플리케이션 루프의 상태 플래그
         bool running_ = false;

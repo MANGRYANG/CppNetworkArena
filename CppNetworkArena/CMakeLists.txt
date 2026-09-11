@@ -112,12 +112,20 @@ add_executable(GameClient
     src/client/game/client_game_state.h
     src/client/graphics/camera/camera.cpp
     src/client/graphics/camera/camera.h
-    src/client/graphics/d3d11_mesh.cpp
-    src/client/graphics/d3d11_mesh.h
-    src/client/graphics/d3d11_renderer.cpp
-    src/client/graphics/d3d11_renderer.h
-    src/client/graphics/d3d11_shader_program.cpp
-    src/client/graphics/d3d11_shader_program.h
+    src/client/graphics/d3d11/d3d11_mesh.cpp
+    src/client/graphics/d3d11/d3d11_mesh.h
+    src/client/graphics/d3d11/d3d11_renderer.cpp
+    src/client/graphics/d3d11/d3d11_renderer.h
+    src/client/graphics/d3d11/d3d11_shader_program.cpp
+    src/client/graphics/d3d11/d3d11_shader_program.h
+    src/client/graphics/d3d11/d3d11_vertex_layout.h
+    src/client/graphics/mesh/mesh_data.h
+    src/client/graphics/mesh/mesh_handle.h
+    src/client/graphics/mesh/mesh_repository.cpp
+    src/client/graphics/mesh/mesh_repository.h
+    src/client/graphics/mesh/vertex3d.h
+    src/client/graphics/mesh/primitives/unit_quad_mesh.cpp
+    src/client/graphics/mesh/primitives/unit_quad_mesh.h
     src/client/network/network_client.cpp
     src/client/network/network_client.h
     src/client/platform/win32_window.cpp

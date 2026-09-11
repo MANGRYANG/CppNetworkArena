@@ -1,21 +1,14 @@
 #include "d3d11_renderer.h"
+#include "d3d11_vertex_layout.h"
 
 #include <DirectXMath.h>
 
 #include <cstdint>
 #include <filesystem>
 #include <string>
-#include <vector>
 
 namespace
 {
-    // 위치 및 색상으로 구성된 3D 정점 데이터 구조체
-    struct Vertex3D final
-    {
-        float position[3];
-        float color[4];
-    };
-
     // 고정 카메라의 뷰-투영 결합 변환 행렬을 담는 구조체
     struct CameraData final
     {
@@ -33,29 +26,6 @@ namespace
 
     // 월드 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
     static_assert((sizeof(ObjectData) % 16) == 0, "Object constant buffer size must be 16-byte aligned.");
-
-    // Vertex3D 구조체에 대응하는 Input Layout 설명자 배열
-    const D3D11_INPUT_ELEMENT_DESC InputLayoutDescs[] =
-    {
-        {
-            "POSITION",
-            0,
-            DXGI_FORMAT_R32G32B32_FLOAT,
-            0,
-            0,
-            D3D11_INPUT_PER_VERTEX_DATA,
-            0
-        },
-        {
-            "COLOR",
-            0,
-            DXGI_FORMAT_R32G32B32A32_FLOAT,
-            0,
-            D3D11_APPEND_ALIGNED_ELEMENT,
-            D3D11_INPUT_PER_VERTEX_DATA,
-            0
-        }
-    };
 
     // 렌더러가 요구하는 그래픽 카드의 하드웨어 기능 수준 목록
     constexpr D3D_FEATURE_LEVEL featureLevels[] =
@@ -142,7 +112,7 @@ namespace cna::client
             return false;
         }
 
-        // 셰이더 프로그램 및 사각형 메쉬 초기화
+        // 셰이더 프로그램 및 그래픽스 파이프라인 공용 자원 초기화
         if (!CreateGraphicsPipeline())
         {
             // DirectX 11 자원 정리 후 실패 처리
@@ -195,6 +165,26 @@ namespace cna::client
         );
 
         return true;
+    }
+
+    std::unique_ptr<D3D11Mesh> D3D11Renderer::CreateMesh(const MeshData& meshData)
+    {
+        // 메쉬 초기화에 필요한 파이프라인 자원이 준비되지 않은 경우 실패 처리
+        if (!initialized_ || !device_ || !shaderProgram_.IsInitialized())
+        {
+            return nullptr;
+        }
+
+        // 생성된 GPU 메쉬의 소유권을 임시로 관리할 스마트 포인터
+        std::unique_ptr<D3D11Mesh> mesh = std::make_unique<D3D11Mesh>();
+
+        // CPU 메쉬 데이터를 사용하여 정점 버퍼, 인덱스 버퍼 및 입력 레이아웃 생성
+        if (!mesh->Initialize(device_.Get(), meshData.vertices, meshData.indices, Vertex3DInputLayoutDescs, ARRAYSIZE(Vertex3DInputLayoutDescs), shaderProgram_.GetVertexShaderBlob()))
+        {
+            return nullptr;
+        }
+
+        return mesh;
     }
 
     bool D3D11Renderer::DrawMesh(const D3D11Mesh& mesh, DirectX::FXMMATRIX worldMatrix)
@@ -255,24 +245,6 @@ namespace cna::client
         mesh.Draw(deviceContext_.Get());
 
         return true;
-    }
-
-    bool D3D11Renderer::DrawTestRectangle()
-    {
-        // 사각형 메쉬를 XY 기준 8배 확대
-        const DirectX::XMMATRIX scale = DirectX::XMMatrixScaling(8.0f, 8.0f, 1.0f);
-
-        // 사각형 메쉬를 Z축 기준 45도 회전
-        const DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationZ(DirectX::XMConvertToRadians(45.0f));
-
-        // 사각형 메쉬를 X축 기준 +3.0f 이동
-        const DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(3.0f, 0.0f, 0.0f);
-
-        // SRT 순서로 행렬 결합
-        const DirectX::XMMATRIX worldMatrix = scale * rotation * translation;
-
-        // 테스트 사각형에 월드 변환을 적용하여 출력
-        return DrawMesh(testQuadMesh_, worldMatrix);
     }
 
     bool D3D11Renderer::EndFrame()
@@ -366,7 +338,7 @@ namespace cna::client
             deviceContext_->ClearState();
         }
 
-        testQuadMesh_.Shutdown();
+        objectConstantBuffer_.Reset();
         cameraConstantBuffer_.Reset();
         shaderProgram_.Shutdown();
 
@@ -581,28 +553,6 @@ namespace cna::client
 
         // 객체별 월드 변환 행렬을 전달하기 위한 동적 상수 버퍼 생성
         if (!CreateObjectConstantBuffer())
-        {
-            return false;
-        }
-
-        // 로컬 공간에서 한 변의 길이가 1.0인 테스트 사각형의 정점 목록
-        const std::vector<Vertex3D> TestRectangleVertices =
-        {
-            { { -0.5f,  0.5f, 0.0f }, { 0.10f, 0.75f, 1.00f, 1.00f } },
-            { {  0.5f,  0.5f, 0.0f }, { 0.20f, 0.35f, 1.00f, 1.00f } },
-            { { -0.5f, -0.5f, 0.0f }, { 0.75f, 0.20f, 1.00f, 1.00f } },
-            { {  0.5f, -0.5f, 0.0f }, { 1.00f, 0.75f, 0.20f, 1.00f } }
-        };
-
-        // 화면 중앙에 출력할 그래픽스 파이프라인 검증용 사각형의 인덱스 목록
-        const std::vector<std::uint16_t> TestRectangleIndices =
-        {
-            0, 1, 2,
-            2, 1, 3
-        };
-
-        // 그래픽스 파이프라인 검증용 사각형 메쉬 초기화
-        if (!testQuadMesh_.Initialize(device_.Get(), TestRectangleVertices, TestRectangleIndices, InputLayoutDescs, ARRAYSIZE(InputLayoutDescs), shaderProgram_.GetVertexShaderBlob()))
         {
             return false;
         }

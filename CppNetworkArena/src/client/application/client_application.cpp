@@ -1,12 +1,17 @@
 #include "client_application.h"
 
+#include "graphics/mesh/primitives/unit_quad_mesh.h"
+
 #include <boost/asio/error.hpp>
+
+#include <DirectXMath.h>
 
 #include <cstdint>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <utility>
 
 namespace
 {
@@ -59,6 +64,38 @@ namespace cna::client
             std::cerr << "[GameClient] Failed to initialize DirectX 11 renderer" << '\n';
 
             // 애플리케이션 종료
+            Shutdown();
+
+            return 1;
+        }
+
+        // CPU 메쉬 데이터를 기반으로 단위 사각형 GPU 메쉬 생성
+        std::unique_ptr<D3D11Mesh> unitQuadMesh = renderer_.CreateMesh(CreateUnitQuadMeshData());
+
+        // 단위 사각형 메쉬 리소스 생성에 실패한 경우
+        if (!unitQuadMesh)
+        {
+            // 생성 실패 메시지 출력
+            std::cerr
+                << "[GameClient] Failed to create unit quad mesh"
+                << '\n';
+
+            // 애플리케이션 종료
+            Shutdown();
+
+            return 1;
+        }
+
+        // GPU 단위 사각형 메쉬를 메쉬 저장소에 등록
+        unitQuadMeshHandle_ = meshRepository_.AddMesh(std::move(unitQuadMesh));
+
+        // 메쉬 저장소에 등록하지 못한 경우
+        if (!unitQuadMeshHandle_.IsValid())
+        {
+            std::cerr
+                << "[GameClient] Failed to register unit quad mesh"
+                << '\n';
+
             Shutdown();
 
             return 1;
@@ -173,6 +210,12 @@ namespace cna::client
             networkClient_->Disconnect();
         }
 
+        // 단위 사각형 메쉬 핸들 무효화
+        unitQuadMeshHandle_ = {};
+        // GPU 메쉬 소유권 해제
+        meshRepository_.Clear();
+
+        // 메쉬 제거 후 렌더러 관련 자원 해제
         renderer_.Shutdown();
 
         // Win32 플랫폼 윈도우 제거
@@ -339,10 +382,33 @@ namespace cna::client
             return false;
         }
 
-        // 기본 2D 그래픽스 파이프라인 검증용 사각형 출력
-        if (!renderer_.DrawTestRectangle())
+        // 저장소에서 현재 유효한 단위 사각형 메쉬 조회
+        const D3D11Mesh* const testRectangleMesh = meshRepository_.FindMesh(unitQuadMeshHandle_);
+
+        // 유효한 단위 사각형 메쉬를 찾지 못한 경우
+        if (!testRectangleMesh)
         {
-            std::cerr << "[GameClient] Failed to draw test rectangle" << '\n';
+            std::cerr
+                << "[GameClient] Cannot find test rectangle mesh"
+                << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        // 단위 사각형에 적용할 월드 변환 행렬 계산
+        const DirectX::XMMATRIX testRectangleScale = DirectX::XMMatrixScaling(8.0f, 8.0f, 1.0f);
+        const DirectX::XMMATRIX testRectangleRotation = DirectX::XMMatrixRotationZ(DirectX::XMConvertToRadians(45.0f));
+        const DirectX::XMMATRIX testRectangleTranslation = DirectX::XMMatrixTranslation(3.0f, 0.0f, 0.0f);
+        const DirectX::XMMATRIX testRectangleWorldMatrix = testRectangleScale * testRectangleRotation * testRectangleTranslation;
+
+        // 메쉬에 월드 변환 행렬 적용 후 그리기
+        if (!renderer_.DrawMesh(*testRectangleMesh, testRectangleWorldMatrix))
+        {
+            std::cerr
+                << "[GameClient] Failed to draw test rectangle"
+                << '\n';
 
             RequestExit(1);
 
