@@ -35,6 +35,12 @@ namespace cna::client
         int Run();
 
     private:
+        // 애플리케이션에서 사용할 CPU 및 GPU 렌더링 자원을 생성하는 함수
+        bool InitializeRenderResources();
+
+        // CPU 메쉬 데이터로 GPU 메쉬를 생성하고 메쉬 저장소에 등록하는 함수
+        MeshHandle CreateMeshResource(const MeshData& meshData);
+
         // 비동기 서버 연결을 시작하는 함수
         bool StartConnection();
 
@@ -68,7 +74,7 @@ namespace cna::client
         // 애플리케이션 내부 데이터 및 상태를 갱신하는 함수
         void Update();
 
-        // 애플리케이션 화면을 렌더링하는 함수 
+        // 애플리케이션 화면을 렌더링하는 함수
         bool Render();
 
         // 비동기 네트워크 작업을 실행하는 IO 컨텍스트
@@ -89,8 +95,8 @@ namespace cna::client
         // 렌더링할 메쉬를 보관하는 메쉬 저장소
         MeshRepository meshRepository_;
 
-        // 단위 사각형이 사용하는 공유 메쉬 핸들
-        MeshHandle unitQuadMeshHandle_;
+        // 아레나 맵 FBX 모델이 사용하는 메쉬 핸들
+        MeshHandle arenaMapMeshHandle_;
 
         // 화면에 출력할 렌더 객체들을 보관하는 목록
         std::vector<RenderObject> renderObjects_;

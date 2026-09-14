@@ -15,6 +15,9 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # vcpkg가 설치한 Boost.Asio 패키지 탐색
 find_package(Boost CONFIG REQUIRED COMPONENTS asio)
 
+# vcpkg가 설치한 Assimp 패키지 탐색
+find_package(assimp CONFIG REQUIRED)
+
 # ---------------------------------------------------------------------------------------------
 # Shared
 # ---------------------------------------------------------------------------------------------
@@ -94,6 +97,16 @@ set(GameClientShaderOutputDirectory
     "${CMAKE_CURRENT_BINARY_DIR}/shaders"
 )
 
+# 클라이언트 런타임 에셋이 위치한 소스 디렉터리 경로 정의
+set(GameClientAssetSourceDirectory
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+)
+
+# 클라이언트 실행 파일과 함께 배치할 에셋 출력 디렉터리 경로 정의
+set(GameClientAssetOutputDirectory
+    "${CMAKE_CURRENT_BINARY_DIR}/assets"
+)
+
 # 셰이더 파일 목록 정의
 set(GameClientShaderSources
     "${GameClientShaderSourceDirectory}/VertexShader.hlsl"
@@ -126,6 +139,9 @@ add_executable(GameClient
     src/client/graphics/mesh/vertex3d.h
     src/client/graphics/mesh/primitives/unit_quad_mesh.cpp
     src/client/graphics/mesh/primitives/unit_quad_mesh.h
+    src/client/graphics/model/loaders/assimp_model_loader.cpp
+    src/client/graphics/model/loaders/assimp_model_loader.h
+    src/client/graphics/model/model_data.h
     src/client/graphics/render/render_object.h
     src/client/graphics/render/transform3d.cpp
     src/client/graphics/render/transform3d.h
@@ -165,8 +181,21 @@ add_custom_target(GameClientShaders
         "${GameClientShaderOutputDirectory}/PixelShader.hlsl"
 )
 
-# GameClient 타겟이 GameClientShaders 타겟 작업에 의존하도록 설정
-add_dependencies(GameClient GameClientShaders)
+# 클라이언트 런타임 에셋을 빌드 디렉터리로 복사하는 커스텀 빌드 타겟(GameClientAssets) 추가
+add_custom_target(GameClientAssets
+    COMMAND
+        ${CMAKE_COMMAND} -E make_directory
+        "${GameClientAssetOutputDirectory}"
+    COMMAND
+        ${CMAKE_COMMAND} -E copy_directory
+        "${GameClientAssetSourceDirectory}"
+        "${GameClientAssetOutputDirectory}"
+    COMMENT "GameClient 런타임 에셋 복사"
+    VERBATIM
+)
+
+# GameClient 타겟이 셰이더 및 런타임 에셋 복사 작업에 의존하도록 설정
+add_dependencies(GameClient GameClientShaders GameClientAssets)
 
 # GameClient 내부 전용 헤더 검색 경로 추가
 target_include_directories(GameClient
@@ -186,6 +215,7 @@ target_link_libraries(GameClient
     PRIVATE
         CppNetworkArenaShared
         Boost::asio
+        assimp::assimp
         user32
         d3d11
         d3dcompiler

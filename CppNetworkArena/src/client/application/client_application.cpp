@@ -1,12 +1,14 @@
 #include "client_application.h"
 
 #include "graphics/mesh/primitives/unit_quad_mesh.h"
+#include "graphics/model/loaders/assimp_model_loader.h"
 
 #include <boost/asio/error.hpp>
 
 #include <DirectXMath.h>
 
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -26,6 +28,34 @@ namespace
 
     // DirectX 렌더링 영역으로 사용할 기본 클라이언트 높이
     constexpr int InitialClientHeight = 720;
+
+    // Windows 환경에서의 최대 경로 길이를 포함할 수 있는 문자열 버퍼 크기 설정
+    constexpr DWORD MaxExecutablePathLength = 32768;
+
+    // 현재 프로세스의 실행 파일을 기준으로 클라이언트 에셋의 절대 경로를 계산하는 함수
+    std::filesystem::path ResolveClientAssetPath(const std::filesystem::path& relativeAssetPath)
+    {
+        std::wstring executablePathBuffer(MaxExecutablePathLength, L'\0');
+
+        // 현재 프로세스의 실행 파일 경로 저장
+        const DWORD executablePathLength = GetModuleFileNameW
+        (
+            nullptr,
+            executablePathBuffer.data(),
+            static_cast<DWORD>(executablePathBuffer.size())
+        );
+
+        if (executablePathLength == 0 || executablePathLength >= static_cast<DWORD>(executablePathBuffer.size()))
+        {
+            return {};
+        }
+
+        // 경로 버퍼 크기 재조정
+        executablePathBuffer.resize(executablePathLength);
+
+        // 클라이언트 에셋의 절대 경로 반환
+        return std::filesystem::path(executablePathBuffer).parent_path()/"assets"/relativeAssetPath;
+    }
 }
 
 namespace cna::client
@@ -69,60 +99,13 @@ namespace cna::client
             return 1;
         }
 
-        // CPU 메쉬 데이터를 기반으로 단위 사각형 GPU 메쉬 생성
-        std::unique_ptr<D3D11Mesh> unitQuadMesh = renderer_.CreateMesh(CreateUnitQuadMeshData());
-
-        // 단위 사각형 메쉬 리소스 생성에 실패한 경우
-        if (!unitQuadMesh)
+        // 애플리케이션에서 사용할 메쉬와 렌더 객체 생성
+        if (!InitializeRenderResources())
         {
-            // 생성 실패 메시지 출력
-            std::cerr
-                << "[GameClient] Failed to create unit quad mesh"
-                << '\n';
-
-            // 애플리케이션 종료
             Shutdown();
 
             return 1;
         }
-
-        // GPU 단위 사각형 메쉬를 메쉬 저장소에 등록
-        unitQuadMeshHandle_ = meshRepository_.AddMesh(std::move(unitQuadMesh));
-
-        // 메쉬 저장소에 등록하지 못한 경우
-        if (!unitQuadMeshHandle_.IsValid())
-        {
-            std::cerr
-                << "[GameClient] Failed to register unit quad mesh"
-                << '\n';
-
-            Shutdown();
-
-            return 1;
-        }
-
-        // 공유 단위 사각형 메쉬를 사용하는 1번 렌더 객체 구성
-        RenderObject firstRectangleObject;
-
-        firstRectangleObject.meshHandle = unitQuadMeshHandle_;
-
-        firstRectangleObject.transform.position = { 3.0f, 0.0f, 0.0f };
-        firstRectangleObject.transform.rotationRadians = { 0.0f, 0.0f, DirectX::XMConvertToRadians(45.0f) };
-        firstRectangleObject.transform.scale = { 8.0f, 8.0f, 1.0f };
-
-        // 렌더링할 객체 목록에 1번 사각형 객체 추가
-        renderObjects_.push_back(firstRectangleObject);
-
-        // 공유 단위 사각형 메쉬를 사용하는 2번 렌더 객체 구성
-        RenderObject secondRectangleObject;
-
-        secondRectangleObject.meshHandle = unitQuadMeshHandle_;
-
-        secondRectangleObject.transform.position = { 0.0f, 1.0f, -2.0f };
-        secondRectangleObject.transform.scale = { 2.0f, 2.0f, 1.0f };
-
-        // 렌더링할 객체 목록에 2번 사각형 객체 추가
-        renderObjects_.push_back(secondRectangleObject);
 
         // Win32 윈도우를 화면에 표시 
         window_.Show();
@@ -184,6 +167,94 @@ namespace cna::client
         return exitCode_;
     }
 
+    bool ClientApplication::InitializeRenderResources()
+    {
+        // 아레나 맵 FBX 파일의 절대 경로 계산
+        const std::filesystem::path arenaMapPath = ResolveClientAssetPath("meshes/environments/map01.fbx");
+
+        if (arenaMapPath.empty())
+        {
+            std::cerr
+                << "[GameClient] Failed to resolve client asset directory"
+                << '\n';
+
+            return false;
+        }
+
+        // 아레나 맵 FBX를 CPU 모델 데이터로 변환
+        AssimpModelLoadResult loadResult = LoadStaticModelData(arenaMapPath);
+
+        if (!loadResult.Succeeded())
+        {
+            std::cerr
+                << "[GameClient] Failed to load arena FBX model: "
+                << loadResult.errorMessage
+                << '\n';
+
+            return false;
+        }
+
+        const ModelMeshData& mapMesh = loadResult.modelData.meshes.front();
+
+        // 아레나 맵 메쉬를 메쉬 저장소에 등록하고 핸들 추출
+        arenaMapMeshHandle_ = CreateMeshResource(mapMesh.meshData);
+
+        if (!arenaMapMeshHandle_.IsValid())
+        {
+            std::cerr
+                << "[GameClient] Failed to create arena mesh resource: "
+                << mapMesh.name
+                << '\n';
+
+            return false;
+        }
+
+        // 아레나 맵 렌더 객체 구성
+        RenderObject arenaMapObject;
+
+        arenaMapObject.meshHandle = arenaMapMeshHandle_;
+
+        arenaMapObject.transform.position =
+        {
+            0.0f,
+            0.0f,
+            0.0f
+        };
+
+        arenaMapObject.transform.rotationRadians =
+        {
+            DirectX::XMConvertToRadians(90.0f),
+            0.0f,
+            0.0f
+        };
+
+        arenaMapObject.transform.scale =
+        {
+            0.04f,
+            0.04f,
+            0.04f
+        };
+
+        // 렌더 객체 목록에 아레나 맵 렌더 객체 등록
+        renderObjects_.push_back(arenaMapObject);
+
+        return true;
+    }
+
+    MeshHandle ClientApplication::CreateMeshResource(const MeshData& meshData)
+    {
+        // CPU 메쉬 데이터를 사용하여 GPU 메쉬 생성
+        std::unique_ptr<D3D11Mesh> mesh = renderer_.CreateMesh(meshData);
+
+        if (!mesh)
+        {
+            return {};
+        }
+
+        // 생성한 GPU 메쉬의 소유권을 저장소로 이전하고 핸들 반환
+        return meshRepository_.AddMesh(std::move(mesh));
+    }
+
     bool ClientApplication::StartConnection()
     {
         return networkClient_->Connect
@@ -236,8 +307,8 @@ namespace cna::client
         // GPU 메쉬를 참조하는 모든 렌더 객체 제거
         renderObjects_.clear();
 
-        // 단위 사각형 메쉬 핸들 무효화
-        unitQuadMeshHandle_ = {};
+        // 아레나 맵 메쉬 핸들 무효화
+        arenaMapMeshHandle_ = {};
 
         // GPU 메쉬 소유권 해제
         meshRepository_.Clear();
