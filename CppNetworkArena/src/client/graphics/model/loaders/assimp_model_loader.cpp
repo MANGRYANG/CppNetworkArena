@@ -109,6 +109,28 @@ namespace cna::client
                     vertexColor = { sourceColor.r, sourceColor.g, sourceColor.b, sourceColor.a };
                 }
 
+                // 정점에 대한 노멀 벡터
+                DirectX::XMFLOAT3 vertexNormal = { 0.0f, 0.0f, 0.0f };
+
+                // FBX 모델에 노멀 벡터가 포함되어 있는 경우
+                if (sourceMesh->HasNormals())
+                {
+                    const aiVector3D& sourceNormal = sourceMesh->mNormals[vertexIndex];
+
+                    vertexNormal = { sourceNormal.x, sourceNormal.y, sourceNormal.z };
+                }
+
+                // 텍스처 좌표
+                DirectX::XMFLOAT2 textureCoordinate = { 0.0f, 0.0f };
+
+                // FBX 모델에 텍스쳐 좌표가 포함되어 있는 경우
+                if (sourceMesh->HasTextureCoords(0))
+                {
+                    const aiVector3D& sourceTextureCoordinate = sourceMesh->mTextureCoords[0][vertexIndex];
+
+                    textureCoordinate = { sourceTextureCoordinate.x, sourceTextureCoordinate.y };
+                }
+
                 modelMesh.meshData.vertices.push_back
                 (
                     {
@@ -117,7 +139,9 @@ namespace cna::client
                             sourcePosition.y,
                             sourcePosition.z
                         },
-                        vertexColor
+                        vertexColor,
+                        vertexNormal,
+                        textureCoordinate
                     }
                 );
             }

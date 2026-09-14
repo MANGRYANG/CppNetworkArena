@@ -5,6 +5,10 @@ struct PixelInput
     float4 position : SV_POSITION;
     // 각 픽셀 위치에 맞게 보간된 색상 데이터
     float4 color : COLOR;
+    // 각 픽셀 위치에 맞게 보간된 정점 노멀 데이터
+    float3 normal : NORMAL;
+    // 각 픽셀 위치에 맞게 보간된 텍스처 좌표 데이터
+    float2 textureCoordinate : TEXCOORD;
 };
 
 // 각 픽셀마다 독립적으로 실행되는 픽셀 셰이더의 Entry Point

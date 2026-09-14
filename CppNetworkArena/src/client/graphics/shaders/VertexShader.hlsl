@@ -15,6 +15,8 @@ struct VertexInput
 {
     float3 position : POSITION;
     float4 color : COLOR;
+    float3 normal : NORMAL;
+    float2 textureCoordinate : TEXCOORD;
 };
 
 // Vertex Shader 연산 후 래스터라이저로 넘길 데이터 구조체
@@ -24,6 +26,10 @@ struct PixelInput
     float4 position : SV_POSITION;
     // Pixel Shader로 전달할 색상 데이터
     float4 color : COLOR;
+    // Pixel Shader로 전달할 정점 노멀 데이터
+    float3 normal : NORMAL;
+    // Pixel Shader로 전달할 텍스처 좌표 데이터
+    float2 textureCoordinate : TEXCOORD;
 };
 
 // 모든 정점마다 실행되는 정점 셰이더의 Entry Point
@@ -47,6 +53,12 @@ PixelInput VSMain(VertexInput input)
     
     // 정점 색상을 Pixel Shader로 전달
     output.color = input.color;
+    
+    // 정점 노멀을 Pixel Shader로 전달
+    output.normal = input.normal;
+
+    // 텍스처 좌표를 Pixel Shader로 전달
+    output.textureCoordinate = input.textureCoordinate;
     
     return output;
 }

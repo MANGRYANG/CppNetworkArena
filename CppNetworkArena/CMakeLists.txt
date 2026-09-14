@@ -137,8 +137,6 @@ add_executable(GameClient
     src/client/graphics/mesh/mesh_repository.cpp
     src/client/graphics/mesh/mesh_repository.h
     src/client/graphics/mesh/vertex3d.h
-    src/client/graphics/mesh/primitives/unit_quad_mesh.cpp
-    src/client/graphics/mesh/primitives/unit_quad_mesh.h
     src/client/graphics/model/loaders/assimp_model_loader.cpp
     src/client/graphics/model/loaders/assimp_model_loader.h
     src/client/graphics/model/model_data.h

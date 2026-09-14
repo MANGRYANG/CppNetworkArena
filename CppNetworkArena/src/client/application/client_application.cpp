@@ -1,6 +1,5 @@
 #include "client_application.h"
 
-#include "graphics/mesh/primitives/unit_quad_mesh.h"
 #include "graphics/model/loaders/assimp_model_loader.h"
 
 #include <boost/asio/error.hpp>
