@@ -2,7 +2,7 @@
 cmake_minimum_required (VERSION 3.20)
 
 # CMake 프로젝트 정의
-project(CppNetworkArena VERSION 0.5.0 LANGUAGES CXX)
+project(CppNetworkArena VERSION 0.6.0 LANGUAGES CXX)
 
 # 프로젝트 전체 C++ 컴파일 기준 설정
 set(CMAKE_CXX_STANDARD 20)                  # C++20 표준 사용
@@ -64,7 +64,13 @@ add_executable(GameServer
     src/server/network/session_manager.cpp
 )
 
-# GameServer 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 Boost.Asio를 링크하도록 설정
+# GameServer 내부 전용 헤더 검색 경로 추가
+target_include_directories(GameServer
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+)
+
+# GameServer 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 함께 필요한 라이브러리를 링크하도록 설정
 target_link_libraries(GameServer
     PRIVATE
         CppNetworkArenaShared
@@ -78,20 +84,111 @@ set_target_properties(GameServer PROPERTIES FOLDER "Apps")
 # Client
 # ---------------------------------------------------------------------------------------------
 
+# 원본 HLSL 셰이더 파일들이 위치한 소스 디렉터리 경로 정의
+set(GameClientShaderSourceDirectory
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/client/graphics/shaders"
+)
+
+# 셰이더 컴파일 결과물이 저장될 출력 디렉터리 경로 정의
+set(GameClientShaderOutputDirectory
+    "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+)
+
+# 셰이더 파일 목록 정의
+set(GameClientShaderSources
+    "${GameClientShaderSourceDirectory}/VertexShader.hlsl"
+    "${GameClientShaderSourceDirectory}/PixelShader.hlsl"
+)
+
+# HLSL 파일의 속성을 변경하여 직접 컴파일 시도 차단
+set_source_files_properties(${GameClientShaderSources} PROPERTIES HEADER_FILE_ONLY TRUE)
+
 # 클라이언트 실행 파일 생성 (GameClient.exe)
 add_executable(GameClient
     src/client/main.cpp
+    src/client/application/client_application.cpp
+    src/client/application/client_application.h
     src/client/game/client_game_state.cpp
     src/client/game/client_game_state.h
+    src/client/graphics/camera/camera.cpp
+    src/client/graphics/camera/camera.h
+    src/client/graphics/d3d11/d3d11_mesh.cpp
+    src/client/graphics/d3d11/d3d11_mesh.h
+    src/client/graphics/d3d11/d3d11_renderer.cpp
+    src/client/graphics/d3d11/d3d11_renderer.h
+    src/client/graphics/d3d11/d3d11_shader_program.cpp
+    src/client/graphics/d3d11/d3d11_shader_program.h
+    src/client/graphics/d3d11/d3d11_vertex_layout.h
+    src/client/graphics/mesh/mesh_data.h
+    src/client/graphics/mesh/mesh_handle.h
+    src/client/graphics/mesh/mesh_repository.cpp
+    src/client/graphics/mesh/mesh_repository.h
+    src/client/graphics/mesh/vertex3d.h
+    src/client/graphics/mesh/primitives/unit_quad_mesh.cpp
+    src/client/graphics/mesh/primitives/unit_quad_mesh.h
+    src/client/graphics/render/render_object.h
+    src/client/graphics/render/transform3d.cpp
+    src/client/graphics/render/transform3d.h
     src/client/network/network_client.cpp
     src/client/network/network_client.h
+    src/client/platform/win32_window.cpp
+    src/client/platform/win32_window.h
+    ${GameClientShaderSources}
 )
 
-# GameClient 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 Boost.Asio를 링크하도록 설정
+# HLSL 셰이더 파일이 변경되면 빌드 디렉터리의 shaders 폴더로 복사
+add_custom_command(
+    OUTPUT
+        "${GameClientShaderOutputDirectory}/VertexShader.hlsl"
+        "${GameClientShaderOutputDirectory}/PixelShader.hlsl"
+    COMMAND
+        ${CMAKE_COMMAND} -E make_directory
+        "${GameClientShaderOutputDirectory}"
+    COMMAND
+        ${CMAKE_COMMAND} -E copy_if_different
+        "${GameClientShaderSourceDirectory}/VertexShader.hlsl"
+        "${GameClientShaderOutputDirectory}/VertexShader.hlsl"
+    COMMAND
+        ${CMAKE_COMMAND} -E copy_if_different
+        "${GameClientShaderSourceDirectory}/PixelShader.hlsl"
+        "${GameClientShaderOutputDirectory}/PixelShader.hlsl"
+    DEPENDS
+        ${GameClientShaderSources}
+    COMMENT "GameClient HLSL 셰이더 파일 복사"
+    VERBATIM
+)
+
+# HLSL 셰이더 파일 복사 작업을 실행할 커스텀 빌드 타겟(GameClientShaders) 추가
+add_custom_target(GameClientShaders
+    DEPENDS
+        "${GameClientShaderOutputDirectory}/VertexShader.hlsl"
+        "${GameClientShaderOutputDirectory}/PixelShader.hlsl"
+)
+
+# GameClient 타겟이 GameClientShaders 타겟 작업에 의존하도록 설정
+add_dependencies(GameClient GameClientShaders)
+
+# GameClient 내부 전용 헤더 검색 경로 추가
+target_include_directories(GameClient
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+)
+
+# 전처리기 매크로 정의
+target_compile_definitions(GameClient
+    PRIVATE
+        WIN32_LEAN_AND_MEAN     # <window.h>에서 불필요한 Windows API 생략
+        NOMINMAX                # <windows.h>이 min, max 매크로를 정의하지 않음
+)
+
+# GameClient 타깃을 빌드할 때 CppNetworkArenaShared 타깃과 함께 필요한 라이브러리들을 링크하도록 설정
 target_link_libraries(GameClient
     PRIVATE
         CppNetworkArenaShared
         Boost::asio
+        user32
+        d3d11
+        d3dcompiler
 )
 
 # Visual Studio에서 GameClient 타깃이 Apps 폴더 아래에 표시되도록 설정

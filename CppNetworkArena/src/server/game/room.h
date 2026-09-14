@@ -2,7 +2,7 @@
 
 #include "player.h"
 
-#include "../network/session_types.h"
+#include "network/session_types.h"
 
 #include <NetworkTypes.h>
 #include <network/messages/core/message_type.h>
