@@ -32,8 +32,8 @@ namespace
     // Windows 환경에서의 최대 경로 길이를 포함할 수 있는 문자열 버퍼 크기 설정
     constexpr DWORD MaxExecutablePathLength = 32768;
 
-    // 현재 프로세스의 실행 파일을 기준으로 클라이언트 에셋의 절대 경로를 계산하는 함수
-    std::filesystem::path ResolveClientAssetPath(const std::filesystem::path& relativeAssetPath)
+    // 현재 프로세스의 실행 파일을 기준으로 클라이언트 런타임 파일의 절대 경로를 계산하는 함수
+    std::filesystem::path ResolveClientRuntimePath(const std::filesystem::path& relativeFilePath)
     {
         std::wstring executablePathBuffer(MaxExecutablePathLength, L'\0');
 
@@ -53,8 +53,8 @@ namespace
         // 경로 버퍼 크기 재조정
         executablePathBuffer.resize(executablePathLength);
 
-        // 클라이언트 에셋의 절대 경로 반환
-        return std::filesystem::path(executablePathBuffer).parent_path()/"assets"/relativeAssetPath;
+        // 클라이언트 런타임 파일의 절대 경로 반환
+        return std::filesystem::path(executablePathBuffer).parent_path()/relativeFilePath;
     }
 }
 
@@ -87,8 +87,33 @@ namespace cna::client
             return 1;
         }
 
+        // 실행 파일을 기준으로 정점 셰이더 경로 계산
+        const std::filesystem::path vertexShaderPath = ResolveClientRuntimePath("shaders/VertexShader.hlsl");
+
+        // 실행 파일을 기준으로 픽셀 셰이더 경로 계산
+        const std::filesystem::path pixelShaderPath = ResolveClientRuntimePath("shaders/PixelShader.hlsl");
+
+        if (vertexShaderPath.empty() || pixelShaderPath.empty())
+        {
+            std::cerr << "[GameClient] Failed to resolve shader file paths" << '\n';
+
+            Shutdown();
+
+            return 1;
+        }
+
+        // 렌더러에 전달할 윈도우 정보와 셰이더 경로 구성
+        const D3D11RendererInitializeInfo rendererInitializeInfo =
+        {
+            window_.GetHandle(),
+            InitialClientWidth,
+            InitialClientHeight,
+            vertexShaderPath,
+            pixelShaderPath
+        };
+
         // 생성된 Win32 윈도우를 대상으로 DirectX 11 그래픽 자원 초기화
-        if (!renderer_.Initialize(window_.GetHandle(), InitialClientWidth, InitialClientHeight))
+        if (!renderer_.Initialize(rendererInitializeInfo))
         {
             // 초기화 실패 메시지 출력
             std::cerr << "[GameClient] Failed to initialize DirectX 11 renderer" << '\n';
@@ -170,7 +195,7 @@ namespace cna::client
     bool ClientApplication::InitializeRenderResources()
     {
         // 아레나 맵 FBX 파일의 절대 경로 계산
-        const std::filesystem::path arenaMapPath = ResolveClientAssetPath("meshes/environments/map01.fbx");
+        const std::filesystem::path arenaMapPath = ResolveClientRuntimePath("assets/meshes/environments/map01.fbx");
 
         if (arenaMapPath.empty())
         {

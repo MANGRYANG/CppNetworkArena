@@ -13,10 +13,21 @@
 #include <wrl/client.h>
 
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 
 namespace cna::client
 {
+    // DirectX 11 렌더러 초기화에 필요한 윈도우 정보와 셰이더 경로를 보관하는 구조체
+    struct D3D11RendererInitializeInfo final
+    {
+        HWND windowHandle = nullptr;
+        std::uint32_t clientWidth = 0;
+        std::uint32_t clientHeight = 0;
+        std::filesystem::path vertexShaderPath;
+        std::filesystem::path pixelShaderPath;
+    };
+
     // DirectX 11 그래픽 자원의 생성 및 프레임 출력을 관리하기 위한 렌더러 클래스
     class D3D11Renderer final
     {
@@ -33,7 +44,7 @@ namespace cna::client
         D3D11Renderer& operator=(D3D11Renderer&&) = delete;
 
         // 렌더러 초기화 함수
-        bool Initialize(HWND hwnd, std::uint32_t clientWidth, std::uint32_t clientHeight);
+        bool Initialize(const D3D11RendererInitializeInfo& initializeInfo);
 
         // 프레임을 그리기 전 배경색으로 채우는 함수
         bool BeginFrame(float r, float g, float b, float a);
@@ -63,8 +74,8 @@ namespace cna::client
         // 클라이언트 영역 크기에 대응하는 깊이 스텐실 버퍼와 뷰를 생성하는 함수
         bool CreateDepthStencilBufferAndView(std::uint32_t clientWidth, std::uint32_t clientHeight);
 
-        // 셰이더 프로그램을 초기화하고 변환 상수 버퍼를 정점 셰이더에 바인딩하는 함수
-        bool CreateGraphicsPipeline();
+        // 전달된 셰이더 파일 경로를 기반으로 셰이더 프로그램과 변환 상수 버퍼를 생성하는 함수
+        bool CreateGraphicsPipeline(const std::filesystem::path& vertexShaderPath, const std::filesystem::path& pixelShaderPath);
 
         // 고정 카메라를 초기화하고 뷰-투영 변환 행렬을 담는 상수 버퍼를 생성하는 함수
         bool CreateCameraConstantBuffer();

@@ -33,9 +33,6 @@ namespace
         D3D_FEATURE_LEVEL_11_0
     };
 
-    // Windows 환경에서의 최대 경로 길이를 포함할 수 있는 문자열 버퍼 크기 설정
-    constexpr DWORD MaxExecutablePathLength = 32768;
-
     // 게임 화면에서 사용할 가상 해상도의 너비
     constexpr float VirtualScreenWidth = 1280.0f;
     // 게임 화면에서 사용할 가상 해상도의 높이
@@ -43,31 +40,6 @@ namespace
 
     // 게임 화면에서 유지할 가상 해상도의 종횡비
     constexpr float VirtualScreenAspectRatio = VirtualScreenWidth / VirtualScreenHeight;
-
-    // 현재 프로세스의 실행 파일이 위치한 디렉터리 경로를 반환하는 함수
-    std::filesystem::path GetExecutableDirectory()
-    {
-        std::wstring executablePathBuffer(MaxExecutablePathLength, L'\0');
-
-        // 현재 프로세스의 실행 파일 경로 저장
-        const DWORD executablePathLength = GetModuleFileNameW
-        (
-            nullptr,
-            executablePathBuffer.data(),
-            static_cast<DWORD>(executablePathBuffer.size())
-        );
-
-        if (executablePathLength == 0 || executablePathLength >= static_cast<DWORD>(executablePathBuffer.size()))
-        {
-            return {};
-        }
-
-        // 경로 버퍼 크기 재조정
-        executablePathBuffer.resize(executablePathLength);
-
-        // 실행 파일이 위치한 디렉터리 경로 반환
-        return std::filesystem::path(executablePathBuffer).parent_path();
-    }
 }
 
 namespace cna::client
@@ -77,16 +49,19 @@ namespace cna::client
         Shutdown();
     }
 
-    bool D3D11Renderer::Initialize(const HWND hwnd, const std::uint32_t clientWidth, const std::uint32_t clientHeight)
+    bool D3D11Renderer::Initialize(const D3D11RendererInitializeInfo& initializeInfo)
     {
         // 이미 초기화되었거나 전달된 윈도우 정보가 유효하지 않은 경우 무시
-        if (initialized_ || !hwnd || clientWidth == 0 || clientHeight == 0)
+        if (initialized_ || !initializeInfo.windowHandle ||
+            initializeInfo.clientWidth == 0 || initializeInfo.clientHeight == 0 ||
+            initializeInfo.vertexShaderPath.empty() || initializeInfo.pixelShaderPath.empty()
+        )
         {
             return false;
         }
 
         // 디바이스 및 스왑 체인 생성
-        if (!CreateDeviceAndSwapChain(hwnd, clientWidth, clientHeight))
+        if (!CreateDeviceAndSwapChain(initializeInfo.windowHandle, initializeInfo.clientWidth, initializeInfo.clientHeight))
         {
             // DirectX 11 자원 정리 후 실패 처리
             Shutdown();
@@ -104,7 +79,7 @@ namespace cna::client
         }
 
         // 깊이 스텐실 버퍼 및 뷰 생성
-        if (!CreateDepthStencilBufferAndView(clientWidth, clientHeight))
+        if (!CreateDepthStencilBufferAndView(initializeInfo.clientWidth, initializeInfo.clientHeight))
         {
             // DirectX 11 자원 정리 후 실패 처리
             Shutdown();
@@ -113,7 +88,7 @@ namespace cna::client
         }
 
         // 셰이더 프로그램 및 그래픽스 파이프라인 공용 자원 초기화
-        if (!CreateGraphicsPipeline())
+        if (!CreateGraphicsPipeline(initializeInfo.vertexShaderPath, initializeInfo.pixelShaderPath))
         {
             // DirectX 11 자원 정리 후 실패 처리
             Shutdown();
@@ -122,7 +97,7 @@ namespace cna::client
         }
 
         // 게임 화면의 종횡비가 클라이언트 영역 내부에 유지되도록 뷰포트 설정
-        SetFixedAspectRatioViewport(clientWidth, clientHeight);
+        SetFixedAspectRatioViewport(initializeInfo.clientWidth, initializeInfo.clientHeight);
 
         initialized_ = true;
 
@@ -525,22 +500,10 @@ namespace cna::client
         return true;
     }
 
-    bool D3D11Renderer::CreateGraphicsPipeline()
+    bool D3D11Renderer::CreateGraphicsPipeline(const std::filesystem::path& vertexShaderPath, const std::filesystem::path& pixelShaderPath)
     {
-        // 현재 프로세스의 실행 파일이 위치하는 디렉터리 경로 계산
-        const std::filesystem::path executableDirectory = GetExecutableDirectory();
-
-        // 디렉터리가 비어 있는 경우 실패 처리
-        if (executableDirectory.empty())
-        {
-            return false;
-        }
-
-        // 셰이더 디렉터리 경로 계산
-        const std::filesystem::path shaderDirectory = executableDirectory/L"shaders";
-
         // 셰이더 파일을 기반으로 셰이더 프로그램 초기화
-        if (!shaderProgram_.Initialize(device_.Get(), shaderDirectory/L"VertexShader.hlsl", shaderDirectory/L"PixelShader.hlsl"))
+        if (!shaderProgram_.Initialize(device_.Get(), vertexShaderPath, pixelShaderPath))
         {
             return false;
         }
