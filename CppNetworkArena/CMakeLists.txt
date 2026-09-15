@@ -132,6 +132,7 @@ add_executable(GameClient
     src/client/graphics/d3d11/d3d11_shader_program.cpp
     src/client/graphics/d3d11/d3d11_shader_program.h
     src/client/graphics/d3d11/d3d11_vertex_layout.h
+    src/client/graphics/material/material_data.h
     src/client/graphics/mesh/mesh_data.h
     src/client/graphics/mesh/mesh_handle.h
     src/client/graphics/mesh/mesh_repository.cpp
