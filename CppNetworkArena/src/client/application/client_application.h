@@ -4,6 +4,7 @@
 #include "graphics/d3d11/d3d11_renderer.h"
 #include "graphics/mesh/mesh_repository.h"
 #include "graphics/render/render_object.h"
+#include "graphics/texture/texture_repository.h"
 #include "network/network_client.h"
 #include "platform/win32_window.h"
 
@@ -16,6 +17,8 @@
 
 namespace cna::client
 {
+    struct ModelTextureData;
+
     // Win32 윈도우, DirectX 11 렌더러, 네트워크 및 게임 상태의 생명 주기를 관리하는 애플리케이션 클래스
     class ClientApplication final
     {
@@ -40,6 +43,9 @@ namespace cna::client
 
         // CPU 메쉬 데이터로 GPU 메쉬를 생성하고 메쉬 저장소에 등록하는 함수
         MeshHandle CreateMeshResource(const MeshData& meshData);
+
+        // CPU 모델 텍스처 데이터로 GPU 텍스처를 생성하고 텍스처 저장소에 등록하는 함수
+        TextureHandle CreateTextureResource(const ModelTextureData& textureData);
 
         // 비동기 서버 연결을 시작하는 함수
         bool StartConnection();
@@ -95,8 +101,14 @@ namespace cna::client
         // 렌더링할 메쉬를 보관하는 메쉬 저장소
         MeshRepository meshRepository_;
 
+        // 렌더링할 텍스처의 GPU 리소스를 보관하는 텍스처 저장소
+        TextureRepository textureRepository_;
+
         // 아레나 맵 FBX 모델이 사용하는 메쉬 핸들
         MeshHandle arenaMapMeshHandle_;
+
+        // 아레나 맵 FBX 모델이 사용하는 기본 색상 텍스처 핸들
+        TextureHandle arenaMapBaseColorTextureHandle_;
 
         // 화면에 출력할 렌더 객체들을 보관하는 목록
         std::vector<RenderObject> renderObjects_;

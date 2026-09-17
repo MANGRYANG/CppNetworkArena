@@ -131,6 +131,8 @@ add_executable(GameClient
     src/client/graphics/d3d11/d3d11_renderer.h
     src/client/graphics/d3d11/d3d11_shader_program.cpp
     src/client/graphics/d3d11/d3d11_shader_program.h
+    src/client/graphics/d3d11/d3d11_texture.cpp
+    src/client/graphics/d3d11/d3d11_texture.h
     src/client/graphics/d3d11/d3d11_vertex_layout.h
     src/client/graphics/material/material_data.h
     src/client/graphics/mesh/mesh_data.h
@@ -144,6 +146,9 @@ add_executable(GameClient
     src/client/graphics/render/render_object.h
     src/client/graphics/render/transform3d.cpp
     src/client/graphics/render/transform3d.h
+    src/client/graphics/texture/texture_handle.h
+    src/client/graphics/texture/texture_repository.cpp
+    src/client/graphics/texture/texture_repository.h
     src/client/network/network_client.cpp
     src/client/network/network_client.h
     src/client/platform/win32_window.cpp
@@ -216,6 +221,9 @@ target_link_libraries(GameClient
         Boost::asio
         assimp::assimp
         user32
+        ole32
+        windowscodecs
+        shlwapi
         d3d11
         d3dcompiler
 )

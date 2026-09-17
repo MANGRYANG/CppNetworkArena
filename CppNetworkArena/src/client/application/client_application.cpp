@@ -233,21 +233,59 @@ namespace cna::client
             return false;
         }
 
+        // 아레나 맵 메쉬가 참조하는 머티리얼이 있으면 기본 색상 텍스처 생성
+        if (mapMesh.materialIndex != InvalidMaterialIndex)
+        {
+            if (mapMesh.materialIndex >= loadResult.modelData.materials.size())
+            {
+                std::cerr
+                    << "[GameClient] Arena mesh references invalid material index"
+                    << ": materialIndex=" << mapMesh.materialIndex
+                    << '\n';
+
+                return false;
+            }
+
+            const ModelMaterialData& mapMaterial = loadResult.modelData.materials[mapMesh.materialIndex];
+
+            // 기본 색상 텍스처가 연결된 머티리얼이면 GPU 텍스처 리소스를 생성하고 텍스처 저장소에 등록
+            if (mapMaterial.baseColorTextureIndex != InvalidTextureIndex)
+            {
+                if (mapMaterial.baseColorTextureIndex >= loadResult.modelData.textures.size())
+                {
+                    std::cerr
+                        << "[GameClient] Arena material references invalid Base Color texture index"
+                        << ": textureIndex=" << mapMaterial.baseColorTextureIndex
+                        << '\n';
+
+                    return false;
+                }
+
+                const ModelTextureData& baseColorTextureData = loadResult.modelData.textures[mapMaterial.baseColorTextureIndex];
+
+                arenaMapBaseColorTextureHandle_ = CreateTextureResource(baseColorTextureData);
+
+                if (!arenaMapBaseColorTextureHandle_.IsValid())
+                {
+                    std::cerr
+                        << "[GameClient] Failed to create arena Base Color texture resource"
+                        << ": source=" << baseColorTextureData.sourceReference
+                        << '\n';
+
+                    return false;
+                }
+            }
+        }
+
         // 아레나 맵 렌더 객체 구성
         RenderObject arenaMapObject;
 
         arenaMapObject.meshHandle = arenaMapMeshHandle_;
+        arenaMapObject.baseColorTextureHandle = arenaMapBaseColorTextureHandle_;
 
         arenaMapObject.transform.position =
         {
             0.0f,
-            0.0f,
-            0.0f
-        };
-
-        arenaMapObject.transform.rotationRadians =
-        {
-            DirectX::XMConvertToRadians(90.0f),
             0.0f,
             0.0f
         };
@@ -277,6 +315,42 @@ namespace cna::client
 
         // 생성한 GPU 메쉬의 소유권을 저장소로 이전하고 핸들 반환
         return meshRepository_.AddMesh(std::move(mesh));
+    }
+
+    TextureHandle ClientApplication::CreateTextureResource(const ModelTextureData& textureData)
+    {
+        std::unique_ptr<D3D11Texture> texture;
+
+        // FBX 파일에 내장된 텍스처는 압축 여부에 따라 내장 데이터를 사용한 WIC 디코딩 또는 원시 BGRA 데이터 변환을 거쳐 생성
+        if (textureData.IsEmbedded())
+        {
+            if (textureData.IsCompressedEmbedded())
+            {
+                texture = renderer_.CreateTextureFromEncodedMemory(textureData.embeddedData);
+            }
+            else
+            {
+                texture = renderer_.CreateTextureFromBgraPixels
+                (
+                    textureData.width,
+                    textureData.height,
+                    textureData.embeddedData
+                );
+            }
+        }
+        else
+        {
+            // 외부 경로의 텍스처는 Assimp 로더를 통해 계산한 파일 경로를 사용한 WIC 디코딩을 거쳐 생성
+            texture = renderer_.CreateTextureFromFile(textureData.filePath);
+        }
+
+        if (!texture)
+        {
+            return {};
+        }
+
+        // 생성된 GPU 텍스처 리소스를 텍스처 저장소에 등록
+        return textureRepository_.AddTexture(std::move(texture));
     }
 
     bool ClientApplication::StartConnection()
@@ -328,14 +402,16 @@ namespace cna::client
             networkClient_->Disconnect();
         }
 
-        // GPU 메쉬를 참조하는 모든 렌더 객체 제거
+        // GPU 메쉬와 텍스처를 참조하는 모든 렌더 객체 제거
         renderObjects_.clear();
 
-        // 아레나 맵 메쉬 핸들 무효화
+        // 아레나 맵 메쉬 및 텍스처 핸들 무효화
         arenaMapMeshHandle_ = {};
+        arenaMapBaseColorTextureHandle_ = {};
 
-        // GPU 메쉬 소유권 해제
+        // 렌더러보다 먼저 GPU 메쉬와 텍스처 소유권 해제
         meshRepository_.Clear();
+        textureRepository_.Clear();
 
         // 메쉬 제거 후 렌더러 관련 자원 해제
         renderer_.Shutdown();
@@ -522,8 +598,27 @@ namespace cna::client
                 return false;
             }
 
-            // 객체별 월드 변환 행렬을 적용하여 렌더 객체 출력
-            if (!renderer_.DrawMesh(*mesh, renderObject.transform.GetWorldMatrix()))
+            const D3D11Texture* baseColorTexture = nullptr;
+
+            // 렌더 객체가 기본 색상 텍스처를 참조하는 경우 GPU 텍스처 리소스 조회
+            if (renderObject.baseColorTextureHandle.IsValid())
+            {
+                baseColorTexture = textureRepository_.FindTexture(renderObject.baseColorTextureHandle);
+
+                if (!baseColorTexture)
+                {
+                    std::cerr
+                        << "[GameClient] Cannot find render object Base Color texture"
+                        << '\n';
+
+                    RequestExit(1);
+
+                    return false;
+                }
+            }
+
+            // 객체별 월드 변환 행렬과 기본 색상 텍스처를 적용하여 렌더 객체 출력
+            if (!renderer_.DrawMesh(*mesh, baseColorTexture, renderObject.transform.GetWorldMatrix()))
             {
                 std::cerr
                     << "[GameClient] Failed to draw render object"

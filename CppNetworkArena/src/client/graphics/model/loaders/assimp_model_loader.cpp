@@ -212,6 +212,7 @@ namespace cna::client
             aiProcess_SortByPType |
             aiProcess_ValidateDataStructure |
             aiProcess_PreTransformVertices |
+            aiProcess_RemoveRedundantMaterials |
             aiProcess_ConvertToLeftHanded;
 
         Assimp::Importer importer;
