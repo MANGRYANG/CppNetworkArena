@@ -285,16 +285,16 @@ namespace cna::client
 
         arenaMapObject.transform.position =
         {
-            0.0f,
+            0.6f,
             0.0f,
             0.0f
         };
 
         arenaMapObject.transform.scale =
         {
-            0.04f,
-            0.04f,
-            0.04f
+            0.07f,
+            0.07f,
+            0.07f
         };
 
         // ·»´õ °´Ã¼ ¸ñ·Ï¿¡ ¾Æ·¹³ª ¸Ê ·»´õ °´Ã¼ µî·Ï

@@ -743,9 +743,9 @@ namespace cna::client
         // XY 플레이 평면을 45도 각도로 비스듬히 바라보는 고정 카메라 구성
         const FixedCamera3D::CameraConfig cameraConfig =
         {
-            { 0.0f, -10.0f, -10.0f },
-            { 0.0f,   0.0f,   0.0f },
-            { 0.0f,   1.0f,   0.0f },
+            { -10.0f, 0.0f, 10.0f },
+            {   0.0f, 0.0f,  0.0f },
+            {   0.0f, 0.0f,  1.0f },
             DirectX::XM_PIDIV4,
             VirtualScreenAspectRatio,
             0.1f,

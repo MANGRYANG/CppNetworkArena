@@ -324,6 +324,15 @@ namespace cna::client
             {
                 const aiVector3D& sourcePosition = sourceMesh->mVertices[vertexIndex];
 
+                // Assimp에서 제공하는 기본 좌표계(+X Right, +Y Up, +Z Forward)를
+                // 게임 공간 기준 좌표계(+X Forward, +Y Right, +Z Up)로 변환
+                const DirectX::XMFLOAT3 vertexPosition =
+                {
+                    sourcePosition.z,
+                    sourcePosition.x,
+                    sourcePosition.y
+                };
+
                 // 기본 색상은 흰색으로 설정
                 DirectX::XMFLOAT4 vertexColor = { 1.0f, 1.0f, 1.0f, 1.0f };
 
@@ -343,7 +352,14 @@ namespace cna::client
                 {
                     const aiVector3D& sourceNormal = sourceMesh->mNormals[vertexIndex];
 
-                    vertexNormal = { sourceNormal.x, sourceNormal.y, sourceNormal.z };
+                    // Assimp에서 제공하는 기본 좌표계(+X Right, +Y Up, +Z Forward)를
+                    // 게임 공간 기준 좌표계(+X Forward, +Y Right, +Z Up)로 변환
+                    vertexNormal =
+                    {
+                        sourceNormal.z,
+                        sourceNormal.x,
+                        sourceNormal.y
+                    };
                 }
 
                 // 텍스처 좌표
@@ -360,11 +376,7 @@ namespace cna::client
                 modelMesh.meshData.vertices.push_back
                 (
                     {
-                        {
-                            sourcePosition.x,
-                            sourcePosition.y,
-                            sourcePosition.z
-                        },
+                        vertexPosition,
                         vertexColor,
                         vertexNormal,
                         textureCoordinate
