@@ -745,7 +745,7 @@ namespace cna::client
         {
             { 0.0f, -10.0f, -10.0f },
             { 0.0f,   0.0f,   0.0f },
-            { 0.0f,   1.0f,   0.0f },
+            { 0.0f,   0.0f,  -1.0f },
             DirectX::XM_PIDIV4,
             VirtualScreenAspectRatio,
             0.1f,
