@@ -8,6 +8,7 @@ cbuffer CameraData : register(b0)
 cbuffer ObjectData : register(b1)
 {
     row_major matrix worldMatrix;
+    row_major matrix normalMatrix;
 }
 
 // Vertex Shader의 입력으로 전달되는 데이터 구조체
@@ -26,7 +27,7 @@ struct PixelInput
     float4 position : SV_POSITION;
     // Pixel Shader로 전달할 색상 데이터
     float4 color : COLOR;
-    // Pixel Shader로 전달할 정점 노멀 데이터
+    // Pixel Shader로 전달할 월드 공간 정점 노멀 데이터
     float3 normal : NORMAL;
     // Pixel Shader로 전달할 텍스처 좌표 데이터
     float2 textureCoordinate : TEXCOORD;
@@ -54,8 +55,8 @@ PixelInput VSMain(VertexInput input)
     // 정점 색상을 Pixel Shader로 전달
     output.color = input.color;
     
-    // 정점 노멀을 Pixel Shader로 전달
-    output.normal = input.normal;
+    // 노멀 변환 행렬의 이동 성분 제거 후 행렬곱
+    output.normal = mul(input.normal, (float3x3) normalMatrix);
 
     // 텍스처 좌표를 Pixel Shader로 전달
     output.textureCoordinate = input.textureCoordinate;

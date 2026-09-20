@@ -4,6 +4,7 @@
 #include <DirectXMath.h>
 #include <objbase.h>
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -16,10 +17,11 @@ namespace
         DirectX::XMFLOAT4X4 viewProjectionMatrix;
     };
 
-    // 객체별 월드 변환 행렬을 담는 구조체
+    // 객체별 월드 변환 행렬과 노멀 변환 행렬을 담는 구조체
     struct ObjectData final
     {
         DirectX::XMFLOAT4X4 worldMatrix;
+        DirectX::XMFLOAT4X4 normalMatrix;
     };
 
     // 픽셀 셰이더에 전달할 기본 색상 텍스처 사용 여부를 담는 구조체
@@ -29,14 +31,26 @@ namespace
         float padding[3] = {};
     };
 
+    // 픽셀 셰이더에 전달할 Directional Light와 기본 Lambert 조명 데이터를 담는 구조체
+    struct LightingGpuData final
+    {
+        DirectX::XMFLOAT3 directionToLight;
+        float ambientIntensity = 0.0f;
+        DirectX::XMFLOAT3 lightColor;
+        float diffuseIntensity = 0.0f;
+    };
+
     // 뷰-투영 결합 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
     static_assert((sizeof(CameraData) % 16) == 0, "Camera constant buffer size must be 16-byte aligned.");
 
-    // 월드 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
+    // 월드 변환 행렬과 노멀 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
     static_assert((sizeof(ObjectData) % 16) == 0, "Object constant buffer size must be 16-byte aligned.");
 
     // 머티리얼 데이터는 상수 버퍼 형태로 픽셀 셰이더에 전달되므로 16바이트 정렬 확인
     static_assert((sizeof(MaterialGpuData) % 16) == 0, "Material constant buffer size must be 16-byte aligned.");
+
+    // 조명 데이터는 상수 버퍼 형태로 픽셀 셰이더에 전달되므로 16바이트 정렬 확인
+    static_assert((sizeof(LightingGpuData) % 16) == 0, "Lighting constant buffer size must be 16-byte aligned.");
 
     // 렌더러가 요구하는 그래픽 카드의 하드웨어 기능 수준 목록
     constexpr D3D_FEATURE_LEVEL featureLevels[] =
@@ -51,6 +65,9 @@ namespace
 
     // 게임 화면에서 유지할 가상 해상도의 종횡비
     constexpr float VirtualScreenAspectRatio = VirtualScreenWidth / VirtualScreenHeight;
+
+    // 역행렬 계산이 불가능한 월드 변환을 판정하기 위한 행렬식 최소 절댓값
+    constexpr float MinimumInvertibleWorldDeterminant = 0.00000001f;
 }
 
 namespace cna::client
@@ -240,7 +257,8 @@ namespace cna::client
     {
         // 메쉬 출력에 필요한 파이프라인 자원이 준비되지 않은 경우 실패 처리
         if (!initialized_ || !deviceContext_ || !cameraConstantBuffer_ || !objectConstantBuffer_ ||
-            !materialConstantBuffer_ || !textureSamplerState_ || !shaderProgram_.IsInitialized() || !mesh.IsInitialized())
+            !materialConstantBuffer_ || !lightingConstantBuffer_ || !textureSamplerState_ ||
+            !shaderProgram_.IsInitialized() || !mesh.IsInitialized())
         {
             return false;
         }
@@ -253,6 +271,27 @@ namespace cna::client
 
         // 유효하지 않은 월드 변환 행렬인 경우 실패 처리
         if (DirectX::XMMatrixIsNaN(worldMatrix) || DirectX::XMMatrixIsInfinite(worldMatrix))
+        {
+            return false;
+        }
+
+        // 비균일 스케일이 포함된 월드 변환에서도 노멀 방향을 올바르게 유지하기 위해 역전치 행렬 계산
+        const DirectX::XMVECTOR worldDeterminantVector = DirectX::XMMatrixDeterminant(worldMatrix);
+        const float worldDeterminant = DirectX::XMVectorGetX(worldDeterminantVector);
+
+        // 역행렬을 계산할 수 없는 월드 변환은 노멀 변환에 사용할 수 없으므로 실패 처리
+        if (!std::isfinite(worldDeterminant) || std::abs(worldDeterminant) <= MinimumInvertibleWorldDeterminant)
+        {
+            return false;
+        }
+
+        const DirectX::XMMATRIX normalMatrix =
+            DirectX::XMMatrixTranspose
+            (
+                DirectX::XMMatrixInverse(nullptr, worldMatrix)
+            );
+
+        if (DirectX::XMMatrixIsNaN(normalMatrix) || DirectX::XMMatrixIsInfinite(normalMatrix))
         {
             return false;
         }
@@ -276,9 +315,10 @@ namespace cna::client
             return false;
         }
 
-        // 매핑된 객체 상수 버퍼 영역에 월드 변환 행렬 저장
+        // 매핑된 객체 상수 버퍼 영역에 월드 변환 행렬과 노멀 변환 행렬 저장
         ObjectData* const objectData = static_cast<ObjectData*>(mappedResource.pData);
         DirectX::XMStoreFloat4x4(&objectData->worldMatrix, worldMatrix);
+        DirectX::XMStoreFloat4x4(&objectData->normalMatrix, normalMatrix);
 
         // 객체 상수 버퍼에 대한 CPU 쓰기 작업 종료
         deviceContext_->Unmap(objectConstantBuffer_.Get(), 0);
@@ -320,9 +360,21 @@ namespace cna::client
         // 정점 셰이더의 상수 버퍼 1번 슬롯에 객체 상수 버퍼 바인딩
         deviceContext_->VSSetConstantBuffers(0, ARRAYSIZE(vertexConstantBuffers), vertexConstantBuffers);
 
-        // 픽셀 셰이더의 상수 버퍼 0번 슬롯에 현재 머티리얼 데이터 바인딩
-        ID3D11Buffer* const pixelConstantBuffer = materialConstantBuffer_.Get();
-        deviceContext_->PSSetConstantBuffers(0, 1, &pixelConstantBuffer);
+        // 픽셀 셰이더에 바인딩할 상수 버퍼 목록
+        ID3D11Buffer* const pixelConstantBuffers[] =
+        {
+            materialConstantBuffer_.Get(),
+            lightingConstantBuffer_.Get()
+        };
+
+        // 픽셀 셰이더의 상수 버퍼 0번 슬롯에 머티리얼 상수 버퍼 바인딩
+        // 픽셀 셰이더의 상수 버퍼 1번 슬롯에 조명 상수 버퍼 바인딩
+        deviceContext_->PSSetConstantBuffers
+        (
+            0,
+            ARRAYSIZE(pixelConstantBuffers),
+            pixelConstantBuffers
+        );
 
         // 픽셀 셰이더의 Texture Resource 0번 슬롯에 기본 색상 텍스처 바인딩
         ID3D11ShaderResourceView* const baseColorShaderResourceView = baseColorTexture ? baseColorTexture->GetShaderResourceView() : nullptr;
@@ -430,9 +482,11 @@ namespace cna::client
         }
 
         textureSamplerState_.Reset();
+        lightingConstantBuffer_.Reset();
         materialConstantBuffer_.Reset();
         objectConstantBuffer_.Reset();
         cameraConstantBuffer_.Reset();
+
         shaderProgram_.Shutdown();
 
         imagingFactory_.Reset();
@@ -665,6 +719,12 @@ namespace cna::client
             return false;
         }
 
+        // 방향광과 기본 Lambert 조명 데이터를 픽셀 셰이더에 전달하기 위한 상수 버퍼 생성
+        if (!CreateLightingConstantBuffer())
+        {
+            return false;
+        }
+
         // 기본 색상 텍스처를 샘플링하기 위한 공용 샘플링 규칙 생성
         if (!CreateTextureSamplerState())
         {
@@ -728,6 +788,65 @@ namespace cna::client
             &constantBufferDesc,
             nullptr,
             materialConstantBuffer_.GetAddressOf()
+        );
+
+        return SUCCEEDED(createConstantBufferResult);
+    }
+
+    bool D3D11Renderer::CreateLightingConstantBuffer()
+    {
+        if (!device_ || lightingConstantBuffer_)
+        {
+            return false;
+        }
+
+        LightingGpuData lightingData = {};
+
+        // 수직 위쪽에 위치하는 광원을 향하는 방향 벡터 설정
+        const DirectX::XMVECTOR directionToLight = DirectX::XMVector3Normalize
+        (
+            DirectX::XMVectorSet
+            (
+                0.0f,
+                0.0f,
+                -1.0f,
+                0.0f
+            )
+        );
+
+        DirectX::XMStoreFloat3(&lightingData.directionToLight, directionToLight);
+
+        // Ambient Light의 세기 설정
+        lightingData.ambientIntensity = 0.2f;
+
+        // Directional Light의 색상 설정 (흰색)
+        lightingData.lightColor = DirectX::XMFLOAT3
+        (
+            1.0f,
+            1.0f,
+            1.0f
+        );
+
+        // 빛을 정면으로 받는 면에서 Ambient와 Diffuse의 최대 밝기 합이 1이 되도록 Diffuse 세기 설정
+        lightingData.diffuseIntensity = 0.8f;
+
+        // 상수 버퍼 설명자 구성
+        D3D11_BUFFER_DESC constantBufferDesc = {};
+        constantBufferDesc.ByteWidth = static_cast<UINT>(sizeof(LightingGpuData));
+        constantBufferDesc.Usage = D3D11_USAGE_IMMUTABLE;
+        constantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        constantBufferDesc.CPUAccessFlags = 0;
+        constantBufferDesc.MiscFlags = 0;
+        constantBufferDesc.StructureByteStride = 0;
+
+        D3D11_SUBRESOURCE_DATA initialData = {};
+        initialData.pSysMem = &lightingData;
+
+        const HRESULT createConstantBufferResult = device_->CreateBuffer
+        (
+            &constantBufferDesc,
+            &initialData,
+            lightingConstantBuffer_.GetAddressOf()
         );
 
         return SUCCEEDED(createConstantBufferResult);

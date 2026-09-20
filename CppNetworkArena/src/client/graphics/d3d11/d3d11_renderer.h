@@ -104,10 +104,13 @@ namespace cna::client
         // 기본 색상 텍스처 사용 여부를 픽셀 셰이더에 전달하기 위한 상수 버퍼를 생성하는 함수
         bool CreateMaterialConstantBuffer();
 
+        // 기본 Lambert 조명 데이터를 픽셀 셰이더에 전달하기 위한 상수 버퍼를 생성하는 함수
+        bool CreateLightingConstantBuffer();
+
         // 고정 카메라를 초기화하고 뷰-투영 변환 행렬을 담는 상수 버퍼를 생성하는 함수
         bool CreateCameraConstantBuffer();
 
-        // 객체별 월드 변환 행렬을 전달하기 위한 동적 상수 버퍼를 생성하는 함수
+        // 객체별 월드 변환 행렬과 노멀 변환 행렬을 전달하기 위한 동적 상수 버퍼를 생성하는 함수
         bool CreateObjectConstantBuffer();
 
         // 클라이언트 영역 내부에 게임 화면 종횡비가 유지되도록 뷰포트를 설정하는 함수
@@ -115,8 +118,10 @@ namespace cna::client
 
         // GPU 리소스를 생성하는 객체
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
+
         // 리소스를 조작하고 GPU에 Draw 명령을 내리는 객체
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> deviceContext_;
+
         // 버퍼 스왑을 통해 화면 송출을 요청하는 객체
         Microsoft::WRL::ComPtr<IDXGISwapChain> swapChain_;
 
@@ -138,11 +143,14 @@ namespace cna::client
         // 고정 카메라의 뷰-투영 결합 행렬을 저장하는 상수 버퍼
         Microsoft::WRL::ComPtr<ID3D11Buffer> cameraConstantBuffer_;
 
-        // 객체별 월드 변환 행렬을 저장하는 상수 버퍼
+        // 객체별 월드 변환 행렬과 노멀 변환 행렬을 저장하는 상수 버퍼
         Microsoft::WRL::ComPtr<ID3D11Buffer> objectConstantBuffer_;
 
         // 기본 색상 텍스처 사용 여부를 저장하는 픽셀 셰이더 상수 버퍼
         Microsoft::WRL::ComPtr<ID3D11Buffer> materialConstantBuffer_;
+
+        // 방향광과 기본 Lambert 조명 데이터를 저장하는 픽셀 셰이더 상수 버퍼
+        Microsoft::WRL::ComPtr<ID3D11Buffer> lightingConstantBuffer_;
 
         // 기본 색상 텍스처를 샘플링할 때 사용하는 공용 Sampler State
         Microsoft::WRL::ComPtr<ID3D11SamplerState> textureSamplerState_;
