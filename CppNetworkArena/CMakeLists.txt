@@ -2,7 +2,7 @@
 cmake_minimum_required (VERSION 3.20)
 
 # CMake 프로젝트 정의
-project(CppNetworkArena VERSION 0.6.0 LANGUAGES CXX)
+project(CppNetworkArena VERSION 0.7.0 LANGUAGES CXX)
 
 # 프로젝트 전체 C++ 컴파일 기준 설정
 set(CMAKE_CXX_STANDARD 20)                  # C++20 표준 사용
@@ -14,6 +14,9 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # vcpkg가 설치한 Boost.Asio 패키지 탐색
 find_package(Boost CONFIG REQUIRED COMPONENTS asio)
+
+# vcpkg가 설치한 Assimp 패키지 탐색
+find_package(assimp CONFIG REQUIRED)
 
 # ---------------------------------------------------------------------------------------------
 # Shared
@@ -94,6 +97,16 @@ set(GameClientShaderOutputDirectory
     "${CMAKE_CURRENT_BINARY_DIR}/shaders"
 )
 
+# 클라이언트 런타임 에셋이 위치한 소스 디렉터리 경로 정의
+set(GameClientAssetSourceDirectory
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+)
+
+# 클라이언트 실행 파일과 함께 배치할 에셋 출력 디렉터리 경로 정의
+set(GameClientAssetOutputDirectory
+    "${CMAKE_CURRENT_BINARY_DIR}/assets"
+)
+
 # 셰이더 파일 목록 정의
 set(GameClientShaderSources
     "${GameClientShaderSourceDirectory}/VertexShader.hlsl"
@@ -118,17 +131,24 @@ add_executable(GameClient
     src/client/graphics/d3d11/d3d11_renderer.h
     src/client/graphics/d3d11/d3d11_shader_program.cpp
     src/client/graphics/d3d11/d3d11_shader_program.h
+    src/client/graphics/d3d11/d3d11_texture.cpp
+    src/client/graphics/d3d11/d3d11_texture.h
     src/client/graphics/d3d11/d3d11_vertex_layout.h
+    src/client/graphics/material/material_data.h
     src/client/graphics/mesh/mesh_data.h
     src/client/graphics/mesh/mesh_handle.h
     src/client/graphics/mesh/mesh_repository.cpp
     src/client/graphics/mesh/mesh_repository.h
     src/client/graphics/mesh/vertex3d.h
-    src/client/graphics/mesh/primitives/unit_quad_mesh.cpp
-    src/client/graphics/mesh/primitives/unit_quad_mesh.h
+    src/client/graphics/model/loaders/assimp_model_loader.cpp
+    src/client/graphics/model/loaders/assimp_model_loader.h
+    src/client/graphics/model/model_data.h
     src/client/graphics/render/render_object.h
     src/client/graphics/render/transform3d.cpp
     src/client/graphics/render/transform3d.h
+    src/client/graphics/texture/texture_handle.h
+    src/client/graphics/texture/texture_repository.cpp
+    src/client/graphics/texture/texture_repository.h
     src/client/network/network_client.cpp
     src/client/network/network_client.h
     src/client/platform/win32_window.cpp
@@ -165,8 +185,24 @@ add_custom_target(GameClientShaders
         "${GameClientShaderOutputDirectory}/PixelShader.hlsl"
 )
 
-# GameClient 타겟이 GameClientShaders 타겟 작업에 의존하도록 설정
-add_dependencies(GameClient GameClientShaders)
+# 클라이언트 런타임 에셋을 빌드 디렉터리로 복사하는 커스텀 빌드 타겟(GameClientAssets) 추가
+add_custom_target(GameClientAssets
+    COMMAND
+        ${CMAKE_COMMAND} -E remove_directory
+        "${GameClientAssetOutputDirectory}"
+    COMMAND
+        ${CMAKE_COMMAND} -E make_directory
+        "${GameClientAssetOutputDirectory}"
+    COMMAND
+        ${CMAKE_COMMAND} -E copy_directory
+        "${GameClientAssetSourceDirectory}"
+        "${GameClientAssetOutputDirectory}"
+    COMMENT "GameClient 런타임 에셋 복사"
+    VERBATIM
+)
+
+# GameClient 타겟이 셰이더 및 런타임 에셋 복사 작업에 의존하도록 설정
+add_dependencies(GameClient GameClientShaders GameClientAssets)
 
 # GameClient 내부 전용 헤더 검색 경로 추가
 target_include_directories(GameClient
@@ -186,7 +222,11 @@ target_link_libraries(GameClient
     PRIVATE
         CppNetworkArenaShared
         Boost::asio
+        assimp::assimp
         user32
+        ole32
+        windowscodecs
+        shlwapi
         d3d11
         d3dcompiler
 )

@@ -5,18 +5,33 @@
 
 #include "d3d11_mesh.h"
 #include "d3d11_shader_program.h"
+#include "d3d11_texture.h"
 
 #include <Windows.h>
 
 #include <d3d11.h>
 #include <dxgi.h>
+#include <wincodec.h>
 #include <wrl/client.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
+#include <span>
 
 namespace cna::client
 {
+    // DirectX 11 렌더러 초기화에 필요한 윈도우 정보와 셰이더 경로를 보관하는 구조체
+    struct D3D11RendererInitializeInfo final
+    {
+        HWND windowHandle = nullptr;
+        std::uint32_t clientWidth = 0;
+        std::uint32_t clientHeight = 0;
+        std::filesystem::path vertexShaderPath;
+        std::filesystem::path pixelShaderPath;
+    };
+
     // DirectX 11 그래픽 자원의 생성 및 프레임 출력을 관리하기 위한 렌더러 클래스
     class D3D11Renderer final
     {
@@ -33,7 +48,7 @@ namespace cna::client
         D3D11Renderer& operator=(D3D11Renderer&&) = delete;
 
         // 렌더러 초기화 함수
-        bool Initialize(HWND hwnd, std::uint32_t clientWidth, std::uint32_t clientHeight);
+        bool Initialize(const D3D11RendererInitializeInfo& initializeInfo);
 
         // 프레임을 그리기 전 배경색으로 채우는 함수
         bool BeginFrame(float r, float g, float b, float a);
@@ -41,8 +56,22 @@ namespace cna::client
         // 메쉬 데이터를 사용하여 GPU 메쉬 리소스를 생성하는 함수
         std::unique_ptr<D3D11Mesh> CreateMesh(const MeshData& meshData);
 
-        // 전달된 메쉬에 객체별 월드 변환을 적용하여 그리는 함수
-        bool DrawMesh(const D3D11Mesh& mesh, DirectX::FXMMATRIX worldMatrix);
+        // 외부 이미지 파일을 사용하여 GPU 텍스처 리소스를 생성하는 함수
+        std::unique_ptr<D3D11Texture> CreateTextureFromFile(const std::filesystem::path& filePath);
+
+        // 인코딩된 메모리 이미지 데이터를 사용하여 GPU 텍스처 리소스를 생성하는 함수
+        std::unique_ptr<D3D11Texture> CreateTextureFromEncodedMemory(std::span<const std::byte> encodedData);
+
+        // BGRA 픽셀 데이터를 사용하여 GPU 텍스처 리소스를 생성하는 함수
+        std::unique_ptr<D3D11Texture> CreateTextureFromBgraPixels
+        (
+            std::uint32_t width,
+            std::uint32_t height,
+            std::span<const std::byte> bgraPixels
+        );
+
+        // 전달된 메쉬와 Base Color 텍스처, Normal Map 텍스처에 객체별 월드 변환을 적용하여 그리는 함수
+        bool DrawMesh(const D3D11Mesh& mesh, const D3D11Texture* baseColorTexture, const D3D11Texture* normalMapTexture, DirectX::FXMMATRIX worldMatrix);
 
         // 백 버퍼와 프론트 버퍼를 교체하여 프레임을 출력하는 함수
         bool EndFrame();
@@ -57,19 +86,31 @@ namespace cna::client
         // 디바이스 및 스왑 체인을 생성하는 함수
         bool CreateDeviceAndSwapChain(HWND hwnd, std::uint32_t clientWidth, std::uint32_t clientHeight);
 
+        // 덱스처 이미지 데이터를 디코딩하기 위한 WIC Factory를 생성하는 함수
+        bool CreateImagingFactory();
+
         // 렌더 타겟 뷰를 생성하는 함수
         bool CreateRenderTargetView();
 
         // 클라이언트 영역 크기에 대응하는 깊이 스텐실 버퍼와 뷰를 생성하는 함수
         bool CreateDepthStencilBufferAndView(std::uint32_t clientWidth, std::uint32_t clientHeight);
 
-        // 셰이더 프로그램을 초기화하고 변환 상수 버퍼를 정점 셰이더에 바인딩하는 함수
-        bool CreateGraphicsPipeline();
+        // 전달된 셰이더 파일 경로를 기반으로 셰이더 프로그램과 그래픽스 파이프라인 공용 자원을 생성하는 함수
+        bool CreateGraphicsPipeline(const std::filesystem::path& vertexShaderPath, const std::filesystem::path& pixelShaderPath);
+
+        // 기본 색상 텍스처를 샘플링하기 위한 공통 규칙을 생성하는 함수
+        bool CreateTextureSamplerState();
+
+        // 기본 색상 텍스처 사용 여부를 픽셀 셰이더에 전달하기 위한 상수 버퍼를 생성하는 함수
+        bool CreateMaterialConstantBuffer();
+
+        // 기본 Lambert 조명 데이터를 픽셀 셰이더에 전달하기 위한 상수 버퍼를 생성하는 함수
+        bool CreateLightingConstantBuffer();
 
         // 고정 카메라를 초기화하고 뷰-투영 변환 행렬을 담는 상수 버퍼를 생성하는 함수
         bool CreateCameraConstantBuffer();
 
-        // 객체별 월드 변환 행렬을 전달하기 위한 동적 상수 버퍼를 생성하는 함수
+        // 객체별 월드 변환 행렬과 노멀 변환 행렬을 전달하기 위한 동적 상수 버퍼를 생성하는 함수
         bool CreateObjectConstantBuffer();
 
         // 클라이언트 영역 내부에 게임 화면 종횡비가 유지되도록 뷰포트를 설정하는 함수
@@ -77,10 +118,15 @@ namespace cna::client
 
         // GPU 리소스를 생성하는 객체
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
+
         // 리소스를 조작하고 GPU에 Draw 명령을 내리는 객체
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> deviceContext_;
+
         // 버퍼 스왑을 통해 화면 송출을 요청하는 객체
         Microsoft::WRL::ComPtr<IDXGISwapChain> swapChain_;
+
+        // 이미지 파일과 메모리 이미지를 디코딩하기 위한 Windows Imaging Component Factory
+        Microsoft::WRL::ComPtr<IWICImagingFactory> imagingFactory_;
 
         // 렌더 타겟을 가리키는 뷰
         Microsoft::WRL::ComPtr<ID3D11RenderTargetView> renderTargetView_;
@@ -97,8 +143,17 @@ namespace cna::client
         // 고정 카메라의 뷰-투영 결합 행렬을 저장하는 상수 버퍼
         Microsoft::WRL::ComPtr<ID3D11Buffer> cameraConstantBuffer_;
 
-        // 객체별 월드 변환 행렬을 저장하는 상수 버퍼
+        // 객체별 월드 변환 행렬과 노멀 변환 행렬을 저장하는 상수 버퍼
         Microsoft::WRL::ComPtr<ID3D11Buffer> objectConstantBuffer_;
+
+        // 기본 색상 텍스처 사용 여부를 저장하는 픽셀 셰이더 상수 버퍼
+        Microsoft::WRL::ComPtr<ID3D11Buffer> materialConstantBuffer_;
+
+        // 방향광과 기본 Lambert 조명 데이터를 저장하는 픽셀 셰이더 상수 버퍼
+        Microsoft::WRL::ComPtr<ID3D11Buffer> lightingConstantBuffer_;
+
+        // 기본 색상 텍스처를 샘플링할 때 사용하는 공용 Sampler State
+        Microsoft::WRL::ComPtr<ID3D11SamplerState> textureSamplerState_;
 
         // 정점 셰이더와 픽셀 셰이더를 관리하는 셰이더 프로그램
         D3D11ShaderProgram shaderProgram_;

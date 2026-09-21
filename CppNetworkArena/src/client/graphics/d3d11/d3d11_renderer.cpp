@@ -2,7 +2,9 @@
 #include "d3d11_vertex_layout.h"
 
 #include <DirectXMath.h>
+#include <objbase.h>
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -15,26 +17,47 @@ namespace
         DirectX::XMFLOAT4X4 viewProjectionMatrix;
     };
 
-    // 객체별 월드 변환 행렬을 담는 구조체
+    // 객체별 월드 변환 행렬과 노멀 변환 행렬을 담는 구조체
     struct ObjectData final
     {
         DirectX::XMFLOAT4X4 worldMatrix;
+        DirectX::XMFLOAT4X4 normalMatrix;
+    };
+
+    // 픽셀 셰이더에 전달할 기본 색상 텍스처 사용 여부를 담는 구조체
+    struct MaterialGpuData final
+    {
+        std::uint32_t useBaseColorTexture = 0;
+        std::uint32_t useNormalMapTexture = 0;
+        float padding[2] = {};
+    };
+
+    // 픽셀 셰이더에 전달할 Directional Light와 기본 Lambert 조명 데이터를 담는 구조체
+    struct LightingGpuData final
+    {
+        DirectX::XMFLOAT3 directionToLight;
+        float ambientIntensity = 0.0f;
+        DirectX::XMFLOAT3 lightColor;
+        float diffuseIntensity = 0.0f;
     };
 
     // 뷰-투영 결합 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
     static_assert((sizeof(CameraData) % 16) == 0, "Camera constant buffer size must be 16-byte aligned.");
 
-    // 월드 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
+    // 월드 변환 행렬과 노멀 변환 행렬은 상수 버퍼 형태로 정점 셰이더에 전달되므로 16바이트 정렬 확인
     static_assert((sizeof(ObjectData) % 16) == 0, "Object constant buffer size must be 16-byte aligned.");
+
+    // 머티리얼 데이터는 상수 버퍼 형태로 픽셀 셰이더에 전달되므로 16바이트 정렬 확인
+    static_assert((sizeof(MaterialGpuData) % 16) == 0, "Material constant buffer size must be 16-byte aligned.");
+
+    // 조명 데이터는 상수 버퍼 형태로 픽셀 셰이더에 전달되므로 16바이트 정렬 확인
+    static_assert((sizeof(LightingGpuData) % 16) == 0, "Lighting constant buffer size must be 16-byte aligned.");
 
     // 렌더러가 요구하는 그래픽 카드의 하드웨어 기능 수준 목록
     constexpr D3D_FEATURE_LEVEL featureLevels[] =
     {
         D3D_FEATURE_LEVEL_11_0
     };
-
-    // Windows 환경에서의 최대 경로 길이를 포함할 수 있는 문자열 버퍼 크기 설정
-    constexpr DWORD MaxExecutablePathLength = 32768;
 
     // 게임 화면에서 사용할 가상 해상도의 너비
     constexpr float VirtualScreenWidth = 1280.0f;
@@ -44,30 +67,8 @@ namespace
     // 게임 화면에서 유지할 가상 해상도의 종횡비
     constexpr float VirtualScreenAspectRatio = VirtualScreenWidth / VirtualScreenHeight;
 
-    // 현재 프로세스의 실행 파일이 위치한 디렉터리 경로를 반환하는 함수
-    std::filesystem::path GetExecutableDirectory()
-    {
-        std::wstring executablePathBuffer(MaxExecutablePathLength, L'\0');
-
-        // 현재 프로세스의 실행 파일 경로 저장
-        const DWORD executablePathLength = GetModuleFileNameW
-        (
-            nullptr,
-            executablePathBuffer.data(),
-            static_cast<DWORD>(executablePathBuffer.size())
-        );
-
-        if (executablePathLength == 0 || executablePathLength >= static_cast<DWORD>(executablePathBuffer.size()))
-        {
-            return {};
-        }
-
-        // 경로 버퍼 크기 재조정
-        executablePathBuffer.resize(executablePathLength);
-
-        // 실행 파일이 위치한 디렉터리 경로 반환
-        return std::filesystem::path(executablePathBuffer).parent_path();
-    }
+    // 역행렬 계산이 불가능한 월드 변환을 판정하기 위한 행렬식 최소 절댓값
+    constexpr float MinimumInvertibleWorldDeterminant = 0.00000001f;
 }
 
 namespace cna::client
@@ -77,16 +78,28 @@ namespace cna::client
         Shutdown();
     }
 
-    bool D3D11Renderer::Initialize(const HWND hwnd, const std::uint32_t clientWidth, const std::uint32_t clientHeight)
+    bool D3D11Renderer::Initialize(const D3D11RendererInitializeInfo& initializeInfo)
     {
         // 이미 초기화되었거나 전달된 윈도우 정보가 유효하지 않은 경우 무시
-        if (initialized_ || !hwnd || clientWidth == 0 || clientHeight == 0)
+        if (initialized_ || !initializeInfo.windowHandle ||
+            initializeInfo.clientWidth == 0 || initializeInfo.clientHeight == 0 ||
+            initializeInfo.vertexShaderPath.empty() || initializeInfo.pixelShaderPath.empty()
+            )
         {
             return false;
         }
 
         // 디바이스 및 스왑 체인 생성
-        if (!CreateDeviceAndSwapChain(hwnd, clientWidth, clientHeight))
+        if (!CreateDeviceAndSwapChain(initializeInfo.windowHandle, initializeInfo.clientWidth, initializeInfo.clientHeight))
+        {
+            // DirectX 11 자원 정리 후 실패 처리
+            Shutdown();
+
+            return false;
+        }
+
+        // 텍스처 이미지 데이터를 디코딩하기 위한 WIC Factory 생성
+        if (!CreateImagingFactory())
         {
             // DirectX 11 자원 정리 후 실패 처리
             Shutdown();
@@ -104,7 +117,7 @@ namespace cna::client
         }
 
         // 깊이 스텐실 버퍼 및 뷰 생성
-        if (!CreateDepthStencilBufferAndView(clientWidth, clientHeight))
+        if (!CreateDepthStencilBufferAndView(initializeInfo.clientWidth, initializeInfo.clientHeight))
         {
             // DirectX 11 자원 정리 후 실패 처리
             Shutdown();
@@ -113,7 +126,7 @@ namespace cna::client
         }
 
         // 셰이더 프로그램 및 그래픽스 파이프라인 공용 자원 초기화
-        if (!CreateGraphicsPipeline())
+        if (!CreateGraphicsPipeline(initializeInfo.vertexShaderPath, initializeInfo.pixelShaderPath))
         {
             // DirectX 11 자원 정리 후 실패 처리
             Shutdown();
@@ -122,7 +135,7 @@ namespace cna::client
         }
 
         // 게임 화면의 종횡비가 클라이언트 영역 내부에 유지되도록 뷰포트 설정
-        SetFixedAspectRatioViewport(clientWidth, clientHeight);
+        SetFixedAspectRatioViewport(initializeInfo.clientWidth, initializeInfo.clientHeight);
 
         initialized_ = true;
 
@@ -187,16 +200,105 @@ namespace cna::client
         return mesh;
     }
 
-    bool D3D11Renderer::DrawMesh(const D3D11Mesh& mesh, DirectX::FXMMATRIX worldMatrix)
+    std::unique_ptr<D3D11Texture> D3D11Renderer::CreateTextureFromFile(const std::filesystem::path& filePath)
+    {
+        // 텍스처 생성에 필요한 자원이 준비되지 않은 경우 실패 처리
+        if (!initialized_ || !device_ || !imagingFactory_ || filePath.empty())
+        {
+            return nullptr;
+        }
+
+        std::unique_ptr<D3D11Texture> texture = std::make_unique<D3D11Texture>();
+
+        if (!texture->InitializeFromFile(device_.Get(), imagingFactory_.Get(), filePath))
+        {
+            return nullptr;
+        }
+
+        return texture;
+    }
+
+    std::unique_ptr<D3D11Texture> D3D11Renderer::CreateTextureFromEncodedMemory(const std::span<const std::byte> encodedData)
+    {
+        // 텍스처 생성에 필요한 자원이 준비되지 않은 경우 실패 처리
+        if (!initialized_ || !device_ || !imagingFactory_ || encodedData.empty())
+        {
+            return nullptr;
+        }
+
+        std::unique_ptr<D3D11Texture> texture = std::make_unique<D3D11Texture>();
+
+        if (!texture->InitializeFromEncodedMemory(device_.Get(), imagingFactory_.Get(), encodedData))
+        {
+            return nullptr;
+        }
+
+        return texture;
+    }
+
+    std::unique_ptr<D3D11Texture> D3D11Renderer::CreateTextureFromBgraPixels(const std::uint32_t width, const std::uint32_t height, const std::span<const std::byte> bgraPixels)
+    {
+        // 텍스처 생성에 필요한 자원이 준비되지 않은 경우 실패 처리
+        if (!initialized_ || !device_ || width == 0 || height == 0 || bgraPixels.empty())
+        {
+            return nullptr;
+        }
+
+        std::unique_ptr<D3D11Texture> texture = std::make_unique<D3D11Texture>();
+
+        if (!texture->InitializeFromBgraPixels(device_.Get(), width, height, bgraPixels))
+        {
+            return nullptr;
+        }
+
+        return texture;
+    }
+
+    bool D3D11Renderer::DrawMesh(const D3D11Mesh& mesh, const D3D11Texture* baseColorTexture, const D3D11Texture* normalMapTexture, DirectX::FXMMATRIX worldMatrix)
     {
         // 메쉬 출력에 필요한 파이프라인 자원이 준비되지 않은 경우 실패 처리
-        if (!initialized_ || !deviceContext_ || !cameraConstantBuffer_ || !objectConstantBuffer_ || !shaderProgram_.IsInitialized() || !mesh.IsInitialized())
+        if (!initialized_ || !deviceContext_ || !cameraConstantBuffer_ || !objectConstantBuffer_ ||
+            !materialConstantBuffer_ || !lightingConstantBuffer_ || !textureSamplerState_ ||
+            !shaderProgram_.IsInitialized() || !mesh.IsInitialized())
+        {
+            return false;
+        }
+
+        // 전달된 기본 색상 텍스처가 존재하지만 초기화되지 않은 경우 실패 처리
+        if (baseColorTexture && !baseColorTexture->IsInitialized())
+        {
+            return false;
+        }
+
+        // 전달된 노멀 맵 텍스처가 존재하지만 초기화되지 않은 경우 실패 처리
+        if (normalMapTexture && !normalMapTexture->IsInitialized())
         {
             return false;
         }
 
         // 유효하지 않은 월드 변환 행렬인 경우 실패 처리
         if (DirectX::XMMatrixIsNaN(worldMatrix) || DirectX::XMMatrixIsInfinite(worldMatrix))
+        {
+            return false;
+        }
+
+        // 비균일 스케일이 포함된 월드 변환에서도 노멀 방향을 올바르게 유지하기 위해 역전치 행렬 계산
+        const DirectX::XMVECTOR worldDeterminantVector = DirectX::XMMatrixDeterminant(worldMatrix);
+        const float worldDeterminant = DirectX::XMVectorGetX(worldDeterminantVector);
+
+        // 역행렬을 계산할 수 없는 월드 변환은 노멀 변환에 사용할 수 없으므로 실패 처리
+        if (!std::isfinite(worldDeterminant) || std::abs(worldDeterminant) <= MinimumInvertibleWorldDeterminant)
+        {
+            return false;
+        }
+
+        const DirectX::XMMATRIX normalMatrix =
+            DirectX::XMMatrixTranspose
+            (
+                DirectX::XMMatrixInverse(nullptr, worldMatrix)
+            );
+
+        if (DirectX::XMMatrixIsNaN(normalMatrix) || DirectX::XMMatrixIsInfinite(normalMatrix))
         {
             return false;
         }
@@ -220,12 +322,36 @@ namespace cna::client
             return false;
         }
 
-        // 매핑된 객체 상수 버퍼 영역에 월드 변환 행렬 저장
+        // 매핑된 객체 상수 버퍼 영역에 월드 변환 행렬과 노멀 변환 행렬 저장
         ObjectData* const objectData = static_cast<ObjectData*>(mappedResource.pData);
         DirectX::XMStoreFloat4x4(&objectData->worldMatrix, worldMatrix);
+        DirectX::XMStoreFloat4x4(&objectData->normalMatrix, normalMatrix);
 
         // 객체 상수 버퍼에 대한 CPU 쓰기 작업 종료
         deviceContext_->Unmap(objectConstantBuffer_.Get(), 0);
+
+        // 이전 머티리얼 데이터를 폐기하고 현재 Draw Call의 텍스처 사용 여부를 기록할 수 있도록 매핑
+        const HRESULT materialMapResult = deviceContext_->Map
+        (
+            materialConstantBuffer_.Get(),
+            0,
+            D3D11_MAP_WRITE_DISCARD,
+            0,
+            &mappedResource
+        );
+
+        if (FAILED(materialMapResult))
+        {
+            return false;
+        }
+
+        MaterialGpuData* const materialData = static_cast<MaterialGpuData*>(mappedResource.pData);
+        materialData->useBaseColorTexture = baseColorTexture ? 1u : 0u;
+        materialData->useNormalMapTexture = normalMapTexture ? 1u : 0u;
+        materialData->padding[0] = 0.0f;
+        materialData->padding[1] = 0.0f;
+
+        deviceContext_->Unmap(materialConstantBuffer_.Get(), 0);
 
         // 정점 및 픽셀 셰이더를 그래픽스 파이프라인에 바인딩
         shaderProgram_.Bind(deviceContext_.Get());
@@ -240,6 +366,36 @@ namespace cna::client
         // 정점 셰이더의 상수 버퍼 0번 슬롯에 카메라 상수 버퍼 바인딩
         // 정점 셰이더의 상수 버퍼 1번 슬롯에 객체 상수 버퍼 바인딩
         deviceContext_->VSSetConstantBuffers(0, ARRAYSIZE(vertexConstantBuffers), vertexConstantBuffers);
+
+        // 픽셀 셰이더에 바인딩할 상수 버퍼 목록
+        ID3D11Buffer* const pixelConstantBuffers[] =
+        {
+            materialConstantBuffer_.Get(),
+            lightingConstantBuffer_.Get()
+        };
+
+        // 픽셀 셰이더의 상수 버퍼 0번 슬롯에 머티리얼 상수 버퍼 바인딩
+        // 픽셀 셰이더의 상수 버퍼 1번 슬롯에 조명 상수 버퍼 바인딩
+        deviceContext_->PSSetConstantBuffers
+        (
+            0,
+            ARRAYSIZE(pixelConstantBuffers),
+            pixelConstantBuffers
+        );
+
+        // 픽셀 셰이더의 Texture Resource 0번 슬롯에 기본 색상 텍스처 바인딩
+        // 픽셀 셰이더의 Texture Resource 1번 슬롯에 노멀 맵 텍스처 바인딩
+        ID3D11ShaderResourceView* const textureShaderResourceViews[] =
+        {
+            baseColorTexture ? baseColorTexture->GetShaderResourceView() : nullptr,
+            normalMapTexture ? normalMapTexture->GetShaderResourceView() : nullptr
+        };
+
+        deviceContext_->PSSetShaderResources(0, ARRAYSIZE(textureShaderResourceViews), textureShaderResourceViews);
+
+        // 픽셀 셰이더의 Sampler State 0번 슬롯에 공용 텍스처 샘플링 규칙 바인딩
+        ID3D11SamplerState* const textureSamplerState = textureSamplerState_.Get();
+        deviceContext_->PSSetSamplers(0, 1, &textureSamplerState);
 
         // Draw call 호출
         mesh.Draw(deviceContext_.Get());
@@ -338,9 +494,15 @@ namespace cna::client
             deviceContext_->ClearState();
         }
 
+        textureSamplerState_.Reset();
+        lightingConstantBuffer_.Reset();
+        materialConstantBuffer_.Reset();
         objectConstantBuffer_.Reset();
         cameraConstantBuffer_.Reset();
+
         shaderProgram_.Shutdown();
+
+        imagingFactory_.Reset();
 
         renderTargetView_.Reset();
         depthStencilView_.Reset();
@@ -422,6 +584,25 @@ namespace cna::client
         }
 
         return true;
+    }
+
+    bool D3D11Renderer::CreateImagingFactory()
+    {
+        if (imagingFactory_)
+        {
+            return false;
+        }
+
+        // 텍스처 이미지 데이터를 디코딩하기 위한 WIC Factory 생성
+        const HRESULT createFactoryResult = CoCreateInstance
+        (
+            CLSID_WICImagingFactory,
+            nullptr,
+            CLSCTX_INPROC_SERVER,
+            IID_PPV_ARGS(imagingFactory_.GetAddressOf())
+        );
+
+        return SUCCEEDED(createFactoryResult);
     }
 
     bool D3D11Renderer::CreateRenderTargetView()
@@ -525,22 +706,10 @@ namespace cna::client
         return true;
     }
 
-    bool D3D11Renderer::CreateGraphicsPipeline()
+    bool D3D11Renderer::CreateGraphicsPipeline(const std::filesystem::path& vertexShaderPath, const std::filesystem::path& pixelShaderPath)
     {
-        // 현재 프로세스의 실행 파일이 위치하는 디렉터리 경로 계산
-        const std::filesystem::path executableDirectory = GetExecutableDirectory();
-
-        // 디렉터리가 비어 있는 경우 실패 처리
-        if (executableDirectory.empty())
-        {
-            return false;
-        }
-
-        // 셰이더 디렉터리 경로 계산
-        const std::filesystem::path shaderDirectory = executableDirectory/L"shaders";
-
         // 셰이더 파일을 기반으로 셰이더 프로그램 초기화
-        if (!shaderProgram_.Initialize(device_.Get(), shaderDirectory/L"VertexShader.hlsl", shaderDirectory/L"PixelShader.hlsl"))
+        if (!shaderProgram_.Initialize(device_.Get(), vertexShaderPath, pixelShaderPath))
         {
             return false;
         }
@@ -557,7 +726,143 @@ namespace cna::client
             return false;
         }
 
+        // 기본 색상 텍스처 사용 여부를 픽셀 셰이더에 전달하기 위한 동적 상수 버퍼 생성
+        if (!CreateMaterialConstantBuffer())
+        {
+            return false;
+        }
+
+        // 방향광과 기본 Lambert 조명 데이터를 픽셀 셰이더에 전달하기 위한 상수 버퍼 생성
+        if (!CreateLightingConstantBuffer())
+        {
+            return false;
+        }
+
+        // 기본 색상 텍스처를 샘플링하기 위한 공용 샘플링 규칙 생성
+        if (!CreateTextureSamplerState())
+        {
+            return false;
+        }
+
         return true;
+    }
+
+    bool D3D11Renderer::CreateTextureSamplerState()
+    {
+        // 이미 샘플러 규칙이 정의되어 있거나 디바이스가 준비되어 있지 않은 경우
+        if (!device_ || textureSamplerState_)
+        {
+            return false;
+        }
+
+        D3D11_SAMPLER_DESC samplerDesc = {};
+        // 삼선형 등방성 텍스처 필터링 사용
+        samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+        samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+        samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+        samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+        samplerDesc.MipLODBias = 0.0f;
+        samplerDesc.MaxAnisotropy = 1;
+        samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+        samplerDesc.BorderColor[0] = 0.0f;
+        samplerDesc.BorderColor[1] = 0.0f;
+        samplerDesc.BorderColor[2] = 0.0f;
+        samplerDesc.BorderColor[3] = 0.0f;
+        samplerDesc.MinLOD = 0.0f;
+        samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
+
+        const HRESULT createSamplerResult = device_->CreateSamplerState
+        (
+            &samplerDesc,
+            textureSamplerState_.GetAddressOf()
+        );
+
+        return SUCCEEDED(createSamplerResult);
+    }
+
+    bool D3D11Renderer::CreateMaterialConstantBuffer()
+    {
+        if (!device_ || materialConstantBuffer_)
+        {
+            return false;
+        }
+
+        // 기본 색상 사용 여부를 저장할 동적 상수 버퍼 설명자 구성
+        D3D11_BUFFER_DESC constantBufferDesc = {};
+        constantBufferDesc.ByteWidth = static_cast<UINT>(sizeof(MaterialGpuData));
+        constantBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+        constantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        constantBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        constantBufferDesc.MiscFlags = 0;
+        constantBufferDesc.StructureByteStride = 0;
+
+        const HRESULT createConstantBufferResult = device_->CreateBuffer
+        (
+            &constantBufferDesc,
+            nullptr,
+            materialConstantBuffer_.GetAddressOf()
+        );
+
+        return SUCCEEDED(createConstantBufferResult);
+    }
+
+    bool D3D11Renderer::CreateLightingConstantBuffer()
+    {
+        if (!device_ || lightingConstantBuffer_)
+        {
+            return false;
+        }
+
+        LightingGpuData lightingData = {};
+
+        // 수직 위쪽에 위치하는 광원을 향하는 방향 벡터 설정
+        const DirectX::XMVECTOR directionToLight = DirectX::XMVector3Normalize
+        (
+            DirectX::XMVectorSet
+            (
+                0.0f,
+                0.0f,
+                -1.0f,
+                0.0f
+            )
+        );
+
+        DirectX::XMStoreFloat3(&lightingData.directionToLight, directionToLight);
+
+        // Ambient Light의 세기 설정
+        lightingData.ambientIntensity = 0.2f;
+
+        // Directional Light의 색상 설정 (흰색)
+        lightingData.lightColor = DirectX::XMFLOAT3
+        (
+            1.0f,
+            1.0f,
+            1.0f
+        );
+
+        // 빛을 정면으로 받는 면에서 Ambient와 Diffuse의 최대 밝기 합이 1이 되도록 Diffuse 세기 설정
+        lightingData.diffuseIntensity = 0.8f;
+
+        // 상수 버퍼 설명자 구성
+        D3D11_BUFFER_DESC constantBufferDesc = {};
+        constantBufferDesc.ByteWidth = static_cast<UINT>(sizeof(LightingGpuData));
+        constantBufferDesc.Usage = D3D11_USAGE_IMMUTABLE;
+        constantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        constantBufferDesc.CPUAccessFlags = 0;
+        constantBufferDesc.MiscFlags = 0;
+        constantBufferDesc.StructureByteStride = 0;
+
+        D3D11_SUBRESOURCE_DATA initialData = {};
+        initialData.pSysMem = &lightingData;
+
+        const HRESULT createConstantBufferResult = device_->CreateBuffer
+        (
+            &constantBufferDesc,
+            &initialData,
+            lightingConstantBuffer_.GetAddressOf()
+        );
+
+        return SUCCEEDED(createConstantBufferResult);
     }
 
     bool D3D11Renderer::CreateCameraConstantBuffer()
@@ -567,12 +872,12 @@ namespace cna::client
             return false;
         }
 
-        // XY 플레이 평면을 45도 각도로 비스듬히 바라보는 고정 카메라 구성
+        // XY 플레이 평면을 약 45도 각도로 비스듬히 바라보는 고정 카메라 구성
         const FixedCamera3D::CameraConfig cameraConfig =
         {
             { 0.0f, -10.0f, -10.0f },
-            { 0.0f,   0.0f,   0.0f },
-            { 0.0f,   1.0f,   0.0f },
+            { 0.0f,  -0.5f,   0.0f },
+            { 0.0f,   0.0f,  -1.0f },
             DirectX::XM_PIDIV4,
             VirtualScreenAspectRatio,
             0.1f,
@@ -688,7 +993,7 @@ namespace cna::client
             // 레터 박스를 고려한 뷰포트 영역의 Top-Left Y 좌표 계산
             viewport.TopLeftY = (clientHeightFloat - viewport.Height) * 0.5f;
         }
-        
+
         // 뷰포트의 최소 깊이 값 설정
         viewport.MinDepth = 0.0f;
         // 뷰포트의 최대 깊이 값 설정

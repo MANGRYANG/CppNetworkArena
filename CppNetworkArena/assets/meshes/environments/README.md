@@ -1,0 +1,4 @@
+- **Asset:** ArenaMap_01
+- **Creator:** mangryang (https://www.meshy.ai/@mangryang)
+- **License:** Creative Commons Attribution 4.0 International (CC BY 4.0)
+- **Author/Creator:** Meshy.ai
