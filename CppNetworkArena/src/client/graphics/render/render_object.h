@@ -15,6 +15,9 @@ namespace cna::client
         // 텍스처 저장소에 등록된 Base Color 텍스처 리소스에 접근하기 위한 핸들
         TextureHandle baseColorTextureHandle;
 
+        // 텍스처 저장소에 등록된 Normal Map 텍스처 리소스에 접근하기 위한 핸들
+        TextureHandle normalMapTextureHandle;
+
         // 객체마다 독립적으로 적용되는 위치, 회전, 스케일 변환 정보
         Transform3D transform;
     };

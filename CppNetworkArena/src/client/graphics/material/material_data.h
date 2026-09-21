@@ -43,10 +43,11 @@ namespace cna::client
 
     inline constexpr std::size_t InvalidTextureIndex = std::numeric_limits<std::size_t>::max();
 
-    // 모델 머티리얼의 이름과 기본 색상 텍스처 연결 정보를 보관하는 구조체
+    // 모델 머티리얼의 이름과 기본 색상 및 노멀 맵 텍스처 연결 정보를 보관하는 구조체
     struct ModelMaterialData final
     {
         std::string name;
         std::size_t baseColorTextureIndex = InvalidTextureIndex;
+        std::size_t normalMapTextureIndex = InvalidTextureIndex;
     };
 }

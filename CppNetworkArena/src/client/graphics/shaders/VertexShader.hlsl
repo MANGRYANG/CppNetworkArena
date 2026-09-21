@@ -17,6 +17,7 @@ struct VertexInput
     float3 position : POSITION;
     float4 color : COLOR;
     float3 normal : NORMAL;
+    float4 tangent : TANGENT;
     float2 textureCoordinate : TEXCOORD;
 };
 
@@ -29,6 +30,8 @@ struct PixelInput
     float4 color : COLOR;
     // Pixel Shader로 전달할 월드 공간 정점 노멀 데이터
     float3 normal : NORMAL;
+    // Pixel Shader로 전달할 월드 공간 탄젠트 데이터 및 방향 복원 부호
+    float4 tangent : TANGENT;
     // Pixel Shader로 전달할 텍스처 좌표 데이터
     float2 textureCoordinate : TEXCOORD;
 };
@@ -57,6 +60,10 @@ PixelInput VSMain(VertexInput input)
     
     // 노멀 변환 행렬의 이동 성분 제거 후 행렬곱
     output.normal = mul(input.normal, (float3x3) normalMatrix);
+    
+    // 월드 변환 행렬의 이동 성분을 제외하고 탄젠트 방향을 월드 공간으로 변환
+    output.tangent.xyz = mul(input.tangent.xyz, (float3x3) worldMatrix);
+    output.tangent.w = input.tangent.w;
 
     // 텍스처 좌표를 Pixel Shader로 전달
     output.textureCoordinate = input.textureCoordinate;

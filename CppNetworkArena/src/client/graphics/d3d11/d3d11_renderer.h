@@ -70,8 +70,8 @@ namespace cna::client
             std::span<const std::byte> bgraPixels
         );
 
-        // 전달된 메쉬와 Base Color 텍스처에 객체별 월드 변환을 적용하여 그리는 함수
-        bool DrawMesh(const D3D11Mesh& mesh, const D3D11Texture* baseColorTexture, DirectX::FXMMATRIX worldMatrix);
+        // 전달된 메쉬와 Base Color 텍스처, Normal Map 텍스처에 객체별 월드 변환을 적용하여 그리는 함수
+        bool DrawMesh(const D3D11Mesh& mesh, const D3D11Texture* baseColorTexture, const D3D11Texture* normalMapTexture, DirectX::FXMMATRIX worldMatrix);
 
         // 백 버퍼와 프론트 버퍼를 교체하여 프레임을 출력하는 함수
         bool EndFrame();

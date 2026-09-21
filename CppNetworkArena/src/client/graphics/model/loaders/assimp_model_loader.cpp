@@ -43,6 +43,21 @@ namespace cna::client
             return false;
         }
 
+        // 머티리얼 정보를 기반으로 노멀 맵 텍스처를 조회하는 함수
+        bool TryGetNormalMapTextureReference(const aiMaterial& material, aiString& textureReference)
+        {
+            // 표준 PBR 머티리얼의 노멀 맵 채널에서 텍스처 조회에 성공한 경우
+            if (material.GetTextureCount(aiTextureType_NORMALS) > 0 &&
+                material.GetTexture(aiTextureType_NORMALS, 0, &textureReference) == AI_SUCCESS &&
+                textureReference.length > 0
+            )
+            {
+                return true;
+            }
+
+            return false;
+        }
+
         // 임베디드 텍스처의 실제 바이트 수를 계산하는 함수
         bool TryGetEmbeddedTextureDataSize(const aiTexture& texture, std::size_t& dataSize)
         {
@@ -207,6 +222,8 @@ namespace cna::client
 
         // 후처리 프로세스 플래그 설정
         unsigned int postProcessFlags =
+            aiProcess_CalcTangentSpace |
+            aiProcess_GenSmoothNormals |
             aiProcess_Triangulate |
             aiProcess_JoinIdenticalVertices |
             aiProcess_SortByPType |
@@ -267,6 +284,7 @@ namespace cna::client
                 }
 
                 aiString baseColorTextureReference;
+                aiString normalMapTextureReference;
 
                 // 머티리얼 정보를 기반으로 기본 색상 텍스처 조회
                 if (TryGetBaseColorTextureReference(*sourceMaterial, baseColorTextureReference))
@@ -277,6 +295,17 @@ namespace cna::client
                     if (TryCreateModelTextureData(*scene, modelFilePath, baseColorTextureReference, modelTextureData))
                     {
                         modelMaterial.baseColorTextureIndex = AddModelTextureData(result.modelData, std::move(modelTextureData));
+                    }
+                }
+
+                if (TryGetNormalMapTextureReference(*sourceMaterial, normalMapTextureReference))
+                {
+                    ModelTextureData modelTextureData;
+
+                    // 조회된 노멀 맵 텍스처를 CPU 텍스처 데이터로 변환
+                    if (TryCreateModelTextureData(*scene, modelFilePath, normalMapTextureReference, modelTextureData))
+                    {
+                        modelMaterial.normalMapTextureIndex = AddModelTextureData(result.modelData, std::move(modelTextureData));
                     }
                 }
             }
@@ -362,6 +391,57 @@ namespace cna::client
                     };
                 }
 
+                // 정점에 대한 탄젠트 벡터와 이중법선 방향을 복원하기 위한 부호
+                DirectX::XMFLOAT4 vertexTangent = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+                // FBX 모델에 탄젠트 및 이중법선 벡터가 포함되어 있는 경우
+                if (sourceMesh->HasTangentsAndBitangents())
+                {
+                    const aiVector3D& sourceTangent = sourceMesh->mTangents[vertexIndex];
+                    const aiVector3D& sourceBitangent = sourceMesh->mBitangents[vertexIndex];
+
+                    // Assimp에서 제공하는 기본 좌표계(+X Right, +Y Up, +Z Forward)를
+                    // 게임 공간 기준 좌표계(+X Right, +Y Forward, -Z Up)로 변환
+                    const DirectX::XMFLOAT3 tangent =
+                    {
+                        sourceTangent.x,
+                        sourceTangent.z,
+                        -sourceTangent.y
+                    };
+
+                    const DirectX::XMFLOAT3 bitangent =
+                    {
+                        sourceBitangent.x,
+                        sourceBitangent.z,
+                        -sourceBitangent.y
+                    };
+
+                    const DirectX::XMVECTOR normalVector = DirectX::XMLoadFloat3(&vertexNormal);
+                    const DirectX::XMVECTOR tangentVector = DirectX::XMLoadFloat3(&tangent);
+                    const DirectX::XMVECTOR bitangentVector = DirectX::XMLoadFloat3(&bitangent);
+
+                    // 탄젠트 공간 축을 복원할 때 사용할 좌표계 판별을 위한 값
+                    const float tangentHandedness =
+                        DirectX::XMVectorGetX
+                        (
+                            DirectX::XMVector3Dot
+                            (
+                                DirectX::XMVector3Cross(normalVector, tangentVector),
+                                bitangentVector
+                            )
+                        ) < 0.0f
+                        ? -1.0f
+                        : 1.0f;
+
+                    vertexTangent =
+                    {
+                        tangent.x,
+                        tangent.y,
+                        tangent.z,
+                        tangentHandedness
+                    };
+                }
+
                 // 텍스처 좌표
                 DirectX::XMFLOAT2 textureCoordinate = { 0.0f, 0.0f };
 
@@ -379,6 +459,7 @@ namespace cna::client
                         vertexPosition,
                         vertexColor,
                         vertexNormal,
+                        vertexTangent,
                         textureCoordinate
                     }
                 );

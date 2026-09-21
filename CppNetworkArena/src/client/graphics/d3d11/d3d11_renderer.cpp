@@ -28,7 +28,8 @@ namespace
     struct MaterialGpuData final
     {
         std::uint32_t useBaseColorTexture = 0;
-        float padding[3] = {};
+        std::uint32_t useNormalMapTexture = 0;
+        float padding[2] = {};
     };
 
     // 픽셀 셰이더에 전달할 Directional Light와 기본 Lambert 조명 데이터를 담는 구조체
@@ -253,7 +254,7 @@ namespace cna::client
         return texture;
     }
 
-    bool D3D11Renderer::DrawMesh(const D3D11Mesh& mesh, const D3D11Texture* baseColorTexture, DirectX::FXMMATRIX worldMatrix)
+    bool D3D11Renderer::DrawMesh(const D3D11Mesh& mesh, const D3D11Texture* baseColorTexture, const D3D11Texture* normalMapTexture, DirectX::FXMMATRIX worldMatrix)
     {
         // 메쉬 출력에 필요한 파이프라인 자원이 준비되지 않은 경우 실패 처리
         if (!initialized_ || !deviceContext_ || !cameraConstantBuffer_ || !objectConstantBuffer_ ||
@@ -265,6 +266,12 @@ namespace cna::client
 
         // 전달된 기본 색상 텍스처가 존재하지만 초기화되지 않은 경우 실패 처리
         if (baseColorTexture && !baseColorTexture->IsInitialized())
+        {
+            return false;
+        }
+
+        // 전달된 노멀 맵 텍스처가 존재하지만 초기화되지 않은 경우 실패 처리
+        if (normalMapTexture && !normalMapTexture->IsInitialized())
         {
             return false;
         }
@@ -340,9 +347,9 @@ namespace cna::client
 
         MaterialGpuData* const materialData = static_cast<MaterialGpuData*>(mappedResource.pData);
         materialData->useBaseColorTexture = baseColorTexture ? 1u : 0u;
+        materialData->useNormalMapTexture = normalMapTexture ? 1u : 0u;
         materialData->padding[0] = 0.0f;
         materialData->padding[1] = 0.0f;
-        materialData->padding[2] = 0.0f;
 
         deviceContext_->Unmap(materialConstantBuffer_.Get(), 0);
 
@@ -377,8 +384,14 @@ namespace cna::client
         );
 
         // 픽셀 셰이더의 Texture Resource 0번 슬롯에 기본 색상 텍스처 바인딩
-        ID3D11ShaderResourceView* const baseColorShaderResourceView = baseColorTexture ? baseColorTexture->GetShaderResourceView() : nullptr;
-        deviceContext_->PSSetShaderResources(0, 1, &baseColorShaderResourceView);
+        // 픽셀 셰이더의 Texture Resource 1번 슬롯에 노멀 맵 텍스처 바인딩
+        ID3D11ShaderResourceView* const textureShaderResourceViews[] =
+        {
+            baseColorTexture ? baseColorTexture->GetShaderResourceView() : nullptr,
+            normalMapTexture ? normalMapTexture->GetShaderResourceView() : nullptr
+        };
+
+        deviceContext_->PSSetShaderResources(0, ARRAYSIZE(textureShaderResourceViews), textureShaderResourceViews);
 
         // 픽셀 셰이더의 Sampler State 0번 슬롯에 공용 텍스처 샘플링 규칙 바인딩
         ID3D11SamplerState* const textureSamplerState = textureSamplerState_.Get();
@@ -859,11 +872,11 @@ namespace cna::client
             return false;
         }
 
-        // XY 플레이 평면을 45도 각도로 비스듬히 바라보는 고정 카메라 구성
+        // XY 플레이 평면을 약 45도 각도로 비스듬히 바라보는 고정 카메라 구성
         const FixedCamera3D::CameraConfig cameraConfig =
         {
             { 0.0f, -10.0f, -10.0f },
-            { 0.0f,   0.0f,   0.0f },
+            { 0.0f,  -0.5f,   0.0f },
             { 0.0f,   0.0f,  -1.0f },
             DirectX::XM_PIDIV4,
             VirtualScreenAspectRatio,

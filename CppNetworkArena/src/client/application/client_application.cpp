@@ -233,7 +233,7 @@ namespace cna::client
             return false;
         }
 
-        // 아레나 맵 메쉬가 참조하는 머티리얼이 있으면 기본 색상 텍스처 생성
+        // 아레나 맵 메쉬가 참조하는 머티리얼이 있으면 기본 색상 및 노멀 맵 텍스처 생성
         if (mapMesh.materialIndex != InvalidMaterialIndex)
         {
             if (mapMesh.materialIndex >= loadResult.modelData.materials.size())
@@ -275,6 +275,34 @@ namespace cna::client
                     return false;
                 }
             }
+
+            // 노멀 맵 텍스처가 연결된 머티리얼이면 GPU 텍스처 리소스를 생성하고 텍스처 저장소에 등록
+            if (mapMaterial.normalMapTextureIndex != InvalidTextureIndex)
+            {
+                if (mapMaterial.normalMapTextureIndex >= loadResult.modelData.textures.size())
+                {
+                    std::cerr
+                        << "[GameClient] Arena material references invalid Normal texture index"
+                        << ": textureIndex=" << mapMaterial.normalMapTextureIndex
+                        << '\n';
+
+                    return false;
+                }
+
+                const ModelTextureData& normalTextureData = loadResult.modelData.textures[mapMaterial.normalMapTextureIndex];
+
+                arenaMapNormalMapTextureHandle_ = CreateTextureResource(normalTextureData);
+
+                if (!arenaMapNormalMapTextureHandle_.IsValid())
+                {
+                    std::cerr
+                        << "[GameClient] Failed to create arena Normal texture resource"
+                        << ": source=" << normalTextureData.sourceReference
+                        << '\n';
+
+                    return false;
+                }
+            }
         }
 
         // 아레나 맵 렌더 객체 구성
@@ -282,20 +310,7 @@ namespace cna::client
 
         arenaMapObject.meshHandle = arenaMapMeshHandle_;
         arenaMapObject.baseColorTextureHandle = arenaMapBaseColorTextureHandle_;
-
-        arenaMapObject.transform.position =
-        {
-            0.0f,
-            0.0f,
-            0.0f
-        };
-
-        arenaMapObject.transform.scale =
-        {
-            0.04f,
-            0.04f,
-            0.04f
-        };
+        arenaMapObject.normalMapTextureHandle = arenaMapNormalMapTextureHandle_;
 
         // 렌더 객체 목록에 아레나 맵 렌더 객체 등록
         renderObjects_.push_back(arenaMapObject);
@@ -408,6 +423,7 @@ namespace cna::client
         // 아레나 맵 메쉬 및 텍스처 핸들 무효화
         arenaMapMeshHandle_ = {};
         arenaMapBaseColorTextureHandle_ = {};
+        arenaMapNormalMapTextureHandle_ = {};
 
         // 렌더러보다 먼저 GPU 메쉬와 텍스처 소유권 해제
         meshRepository_.Clear();
@@ -617,8 +633,27 @@ namespace cna::client
                 }
             }
 
-            // 객체별 월드 변환 행렬과 기본 색상 텍스처를 적용하여 렌더 객체 출력
-            if (!renderer_.DrawMesh(*mesh, baseColorTexture, renderObject.transform.GetWorldMatrix()))
+            const D3D11Texture* normalMapTexture = nullptr;
+
+            // 렌더 객체가 노멀 맵 텍스처를 참조하는 경우 GPU 텍스처 리소스 조회
+            if (renderObject.normalMapTextureHandle.IsValid())
+            {
+                normalMapTexture = textureRepository_.FindTexture(renderObject.normalMapTextureHandle);
+
+                if (!normalMapTexture)
+                {
+                    std::cerr
+                        << "[GameClient] Cannot find render object Normal texture"
+                        << '\n';
+
+                    RequestExit(1);
+
+                    return false;
+                }
+            }
+
+            // 객체별 월드 변환 행렬과 기본 색상 및 노멀 텍스처를 적용하여 렌더 객체 출력
+            if (!renderer_.DrawMesh(*mesh, baseColorTexture, normalMapTexture, renderObject.transform.GetWorldMatrix()))
             {
                 std::cerr
                     << "[GameClient] Failed to draw render object"

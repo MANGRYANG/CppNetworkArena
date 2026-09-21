@@ -110,6 +110,9 @@ namespace cna::client
         // 아레나 맵 FBX 모델이 사용하는 기본 색상 텍스처 핸들
         TextureHandle arenaMapBaseColorTextureHandle_;
 
+        // 아레나 맵 FBX 모델이 사용하는 노멀 맵 텍스처 핸들
+        TextureHandle arenaMapNormalMapTextureHandle_;
+
         // 화면에 출력할 렌더 객체들을 보관하는 목록
         std::vector<RenderObject> renderObjects_;
 
