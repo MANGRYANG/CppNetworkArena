@@ -2,7 +2,7 @@
 cmake_minimum_required (VERSION 3.20)
 
 # CMake 프로젝트 정의
-project(CppNetworkArena VERSION 0.6.1 LANGUAGES CXX)
+project(CppNetworkArena VERSION 0.6.2 LANGUAGES CXX)
 
 # 프로젝트 전체 C++ 컴파일 기준 설정
 set(CMAKE_CXX_STANDARD 20)                  # C++20 표준 사용
@@ -187,6 +187,9 @@ add_custom_target(GameClientShaders
 
 # 클라이언트 런타임 에셋을 빌드 디렉터리로 복사하는 커스텀 빌드 타겟(GameClientAssets) 추가
 add_custom_target(GameClientAssets
+    COMMAND
+        ${CMAKE_COMMAND} -E remove_directory
+        "${GameClientAssetOutputDirectory}"
     COMMAND
         ${CMAKE_COMMAND} -E make_directory
         "${GameClientAssetOutputDirectory}"
