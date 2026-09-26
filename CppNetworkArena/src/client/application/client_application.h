@@ -38,6 +38,13 @@ namespace cna::client
         int Run();
 
     private:
+        // 플레이어 외형에 적용할 기본 색상 및 노멀 텍스처 핸들을 보관하는 구조체
+        struct PlayerTextureSet final
+        {
+            TextureHandle baseColorTextureHandle;
+            TextureHandle normalTextureHandle;
+        };
+
         // 애플리케이션에서 사용할 CPU 및 GPU 렌더링 자원을 생성하는 함수
         bool InitializeRenderResources();
 
@@ -46,6 +53,9 @@ namespace cna::client
 
         // CPU 모델 텍스처 데이터로 GPU 텍스처를 생성하고 텍스처 저장소에 등록하는 함수
         TextureHandle CreateTextureResource(const ModelTextureData& textureData);
+
+        // 이미지 파일 경로를 기반으로 GPU 텍스처를 생성하고 텍스처 저장소에 등록하는 함수
+        TextureHandle CreateTextureResource(const std::filesystem::path& textureFilePath);
 
         // 비동기 서버 연결을 시작하는 함수
         bool StartConnection();
@@ -107,11 +117,20 @@ namespace cna::client
         // 아레나 맵 FBX 모델이 사용하는 메쉬 핸들
         MeshHandle arenaMapMeshHandle_;
 
+        // 모든 플레이어 렌더 객체가 공용으로 사용하는 플레이어 메쉬 핸들
+        MeshHandle playerMeshHandle_;
+
         // 아레나 맵 FBX 모델이 사용하는 기본 색상 텍스처 핸들
         TextureHandle arenaMapBaseColorTextureHandle_;
 
         // 아레나 맵 FBX 모델이 사용하는 노멀 맵 텍스처 핸들
         TextureHandle arenaMapNormalMapTextureHandle_;
+
+        // 화염 측 플레이어가 사용하는 텍스처 리소스
+        PlayerTextureSet flamePlayerTextureSet_;
+
+        // 서리 측 플레이어가 사용하는 텍스처 리소스
+        PlayerTextureSet frostPlayerTextureSet_;
 
         // 화면에 출력할 렌더 객체들을 보관하는 목록
         std::vector<RenderObject> renderObjects_;

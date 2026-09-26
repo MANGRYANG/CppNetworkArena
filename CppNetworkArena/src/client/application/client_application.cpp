@@ -305,6 +305,125 @@ namespace cna::client
             }
         }
 
+        // 플레이어 FBX 파일의 절대 경로 계산
+        const std::filesystem::path playerModelPath = ResolveClientRuntimePath("assets/meshes/players/player.fbx");
+
+        if (playerModelPath.empty())
+        {
+            std::cerr
+                << "[GameClient] Failed to resolve player model path"
+                << '\n';
+
+            return false;
+        }
+
+        // 플레이어 FBX를 CPU 모델 데이터로 변환
+        AssimpModelLoadResult playerLoadResult = LoadStaticModelData(playerModelPath);
+
+        if (!playerLoadResult.Succeeded())
+        {
+            std::cerr
+                << "[GameClient] Failed to load player FBX model: "
+                << playerLoadResult.errorMessage
+                << '\n';
+
+            return false;
+        }
+
+        const ModelMeshData& playerMesh = playerLoadResult.modelData.meshes.front();
+
+        // 모든 플레이어가 공유할 메쉬를 메쉬 저장소에 등록하고 핸들 추출
+        playerMeshHandle_ = CreateMeshResource(playerMesh.meshData);
+
+        if (!playerMeshHandle_.IsValid())
+        {
+            std::cerr
+                << "[GameClient] Failed to create player mesh resource: "
+                << playerMesh.name
+                << '\n';
+
+            return false;
+        }
+
+        // 화염 측 플레이어의 기본 색상 텍스처 파일 경로 계산
+        const std::filesystem::path flameBaseColorTexturePath =
+            ResolveClientRuntimePath("assets/textures/players/player_flame_texture.png");
+
+        // 화염 측 플레이어의 노멀 텍스처 파일 경로 계산
+        const std::filesystem::path flameNormalMapTexturePath =
+            ResolveClientRuntimePath("assets/textures/players/player_flame_texture_normal.png");
+
+        // 서리 측 플레이어의 기본 색상 텍스처 파일 경로 계산
+        const std::filesystem::path frostBaseColorTexturePath =
+            ResolveClientRuntimePath("assets/textures/players/player_frost_texture.png");
+
+        // 서리 측 플레이어의 노멀 텍스처 파일 경로 계산
+        const std::filesystem::path frostNormalMapTexturePath =
+            ResolveClientRuntimePath("assets/textures/players/player_frost_texture_normal.png");
+
+        if (flameBaseColorTexturePath.empty() || flameNormalMapTexturePath.empty() ||
+            frostBaseColorTexturePath.empty() || frostNormalMapTexturePath.empty()
+            )
+        {
+            std::cerr
+                << "[GameClient] Failed to resolve player texture paths"
+                << '\n';
+
+            return false;
+        }
+
+        // 화염 측 플레이어의 기본 색상 텍스처를 텍스처 저장소에 등록
+        flamePlayerTextureSet_.baseColorTextureHandle = CreateTextureResource(flameBaseColorTexturePath);
+
+        if (!flamePlayerTextureSet_.baseColorTextureHandle.IsValid())
+        {
+            std::cerr
+                << "[GameClient] Failed to create flame player Base Color texture resource"
+                << ": source=" << flameBaseColorTexturePath
+                << '\n';
+
+            return false;
+        }
+
+        // 화염 측 플레이어의 노멀 텍스처를 텍스처 저장소에 등록
+        flamePlayerTextureSet_.normalTextureHandle = CreateTextureResource(flameNormalMapTexturePath);
+
+        if (!flamePlayerTextureSet_.normalTextureHandle.IsValid())
+        {
+            std::cerr
+                << "[GameClient] Failed to create flame player Normal texture resource"
+                << ": source=" << flameNormalMapTexturePath
+                << '\n';
+
+            return false;
+        }
+
+        // 서리 측 플레이어의 기본 색상 텍스처를 텍스처 저장소에 등록
+        frostPlayerTextureSet_.baseColorTextureHandle = CreateTextureResource(frostBaseColorTexturePath);
+
+        if (!frostPlayerTextureSet_.baseColorTextureHandle.IsValid())
+        {
+            std::cerr
+                << "[GameClient] Failed to create frost player Base Color texture resource"
+                << ": source=" << frostBaseColorTexturePath
+                << '\n';
+
+            return false;
+        }
+
+        // 서리 측 플레이어의 노멀 텍스처를 텍스처 저장소에 등록
+        frostPlayerTextureSet_.normalTextureHandle = CreateTextureResource(frostNormalMapTexturePath);
+
+        if (!frostPlayerTextureSet_.normalTextureHandle.IsValid())
+        {
+            std::cerr
+                << "[GameClient] Failed to create frost player Normal texture resource"
+                << ": source=" << frostNormalMapTexturePath
+                << '\n';
+
+            return false;
+        }
+
         // 아레나 맵 렌더 객체 구성
         RenderObject arenaMapObject;
 
@@ -312,8 +431,40 @@ namespace cna::client
         arenaMapObject.baseColorTextureHandle = arenaMapBaseColorTextureHandle_;
         arenaMapObject.normalMapTextureHandle = arenaMapNormalMapTextureHandle_;
 
+        // 화염 측 플레이어 렌더 객체 구성
+        RenderObject flamePlayerObject;
+
+        flamePlayerObject.meshHandle = playerMeshHandle_;
+        flamePlayerObject.baseColorTextureHandle = flamePlayerTextureSet_.baseColorTextureHandle;
+        flamePlayerObject.normalMapTextureHandle = flamePlayerTextureSet_.normalTextureHandle;
+
+        flamePlayerObject.transform.position =
+        {
+            -1.5f,
+            0.0f,
+            0.0f
+        };
+
+        // 서리 측 플레이어 렌더 객체 구성
+        RenderObject frostPlayerObject;
+
+        frostPlayerObject.meshHandle = playerMeshHandle_;
+        frostPlayerObject.baseColorTextureHandle = frostPlayerTextureSet_.baseColorTextureHandle;
+        frostPlayerObject.normalMapTextureHandle = frostPlayerTextureSet_.normalTextureHandle;
+
+        frostPlayerObject.transform.position =
+        {
+            1.5f,
+            0.0f,
+            0.0f
+        };
+
         // 렌더 객체 목록에 아레나 맵 렌더 객체 등록
         renderObjects_.push_back(arenaMapObject);
+
+        // 렌더 객체 목록에 플레이어 렌더 객체 등록
+        renderObjects_.push_back(flamePlayerObject);
+        renderObjects_.push_back(frostPlayerObject);
 
         return true;
     }
@@ -363,6 +514,15 @@ namespace cna::client
         {
             return {};
         }
+
+        // 생성된 GPU 텍스처 리소스를 텍스처 저장소에 등록
+        return textureRepository_.AddTexture(std::move(texture));
+    }
+
+    TextureHandle ClientApplication::CreateTextureResource(const std::filesystem::path& textureFilePath)
+    {
+        // 파일 경로 기반으로 WIC 디코딩을 수행하여 GPU 텍스처 리소스 생성
+        std::unique_ptr<D3D11Texture> texture = renderer_.CreateTextureFromFile(textureFilePath);
 
         // 생성된 GPU 텍스처 리소스를 텍스처 저장소에 등록
         return textureRepository_.AddTexture(std::move(texture));
@@ -424,6 +584,11 @@ namespace cna::client
         arenaMapMeshHandle_ = {};
         arenaMapBaseColorTextureHandle_ = {};
         arenaMapNormalMapTextureHandle_ = {};
+
+        // 플레이어 메쉬 및 텍스처 핸들 무효화
+        playerMeshHandle_ = {};
+        flamePlayerTextureSet_ = {};
+        frostPlayerTextureSet_ = {};
 
         // 렌더러보다 먼저 GPU 메쉬와 텍스처 소유권 해제
         meshRepository_.Clear();
