@@ -48,6 +48,12 @@ namespace cna::client
         // 애플리케이션에서 사용할 CPU 및 GPU 렌더링 자원을 생성하는 함수
         bool InitializeRenderResources();
 
+        // 플레이어 렌더 객체를 생성하고 플레이어 렌더 객체 목록에 등록하는 함수
+        void InitializePlayerRenderObjects();
+
+        // 공용 플레이어 메쉬와 지정된 텍스처 및 변환 정보를 사용하여 플레이어 렌더 객체를 생성하는 함수
+        RenderObject CreatePlayerRenderObject(const PlayerTextureSet& textureSet, const Transform3D& transform) const;
+
         // CPU 메쉬 데이터로 GPU 메쉬를 생성하고 메쉬 저장소에 등록하는 함수
         MeshHandle CreateMeshResource(const MeshData& meshData);
 
@@ -56,6 +62,9 @@ namespace cna::client
 
         // 이미지 파일 경로를 기반으로 GPU 텍스처를 생성하고 텍스처 저장소에 등록하는 함수
         TextureHandle CreateTextureResource(const std::filesystem::path& textureFilePath);
+
+        // 렌더 객체가 참조하는 GPU 리소스와 객체별 변환 정보를 사용하여 화면에 출력하는 함수
+        bool DrawRenderObject(const RenderObject& renderObject);
 
         // 비동기 서버 연결을 시작하는 함수
         bool StartConnection();
@@ -132,8 +141,11 @@ namespace cna::client
         // 서리 측 플레이어가 사용하는 텍스처 리소스
         PlayerTextureSet frostPlayerTextureSet_;
 
-        // 화면에 출력할 렌더 객체들을 보관하는 목록
+        // 화면에 출력할 일반 렌더 객체들을 보관하는 목록
         std::vector<RenderObject> renderObjects_;
+
+        // 화면에 출력할 플레이어 렌더 객체들을 보관하는 목록
+        std::vector<RenderObject> playerRenderObjects_;
 
         // 애플리케이션 루프의 상태 플래그
         bool running_ = false;
