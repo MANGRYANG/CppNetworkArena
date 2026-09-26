@@ -305,6 +305,125 @@ namespace cna::client
             }
         }
 
+        // 플레이어 FBX 파일의 절대 경로 계산
+        const std::filesystem::path playerModelPath = ResolveClientRuntimePath("assets/meshes/players/player.fbx");
+
+        if (playerModelPath.empty())
+        {
+            std::cerr
+                << "[GameClient] Failed to resolve player model path"
+                << '\n';
+
+            return false;
+        }
+
+        // 플레이어 FBX를 CPU 모델 데이터로 변환
+        AssimpModelLoadResult playerLoadResult = LoadStaticModelData(playerModelPath);
+
+        if (!playerLoadResult.Succeeded())
+        {
+            std::cerr
+                << "[GameClient] Failed to load player FBX model: "
+                << playerLoadResult.errorMessage
+                << '\n';
+
+            return false;
+        }
+
+        const ModelMeshData& playerMesh = playerLoadResult.modelData.meshes.front();
+
+        // 모든 플레이어가 공유할 메쉬를 메쉬 저장소에 등록하고 핸들 추출
+        playerMeshHandle_ = CreateMeshResource(playerMesh.meshData);
+
+        if (!playerMeshHandle_.IsValid())
+        {
+            std::cerr
+                << "[GameClient] Failed to create player mesh resource: "
+                << playerMesh.name
+                << '\n';
+
+            return false;
+        }
+
+        // 화염 측 플레이어의 기본 색상 텍스처 파일 경로 계산
+        const std::filesystem::path flameBaseColorTexturePath =
+            ResolveClientRuntimePath("assets/textures/players/player_flame_texture.png");
+
+        // 화염 측 플레이어의 노멀 텍스처 파일 경로 계산
+        const std::filesystem::path flameNormalMapTexturePath =
+            ResolveClientRuntimePath("assets/textures/players/player_flame_texture_normal.png");
+
+        // 서리 측 플레이어의 기본 색상 텍스처 파일 경로 계산
+        const std::filesystem::path frostBaseColorTexturePath =
+            ResolveClientRuntimePath("assets/textures/players/player_frost_texture.png");
+
+        // 서리 측 플레이어의 노멀 텍스처 파일 경로 계산
+        const std::filesystem::path frostNormalMapTexturePath =
+            ResolveClientRuntimePath("assets/textures/players/player_frost_texture_normal.png");
+
+        if (flameBaseColorTexturePath.empty() || flameNormalMapTexturePath.empty() ||
+            frostBaseColorTexturePath.empty() || frostNormalMapTexturePath.empty()
+            )
+        {
+            std::cerr
+                << "[GameClient] Failed to resolve player texture paths"
+                << '\n';
+
+            return false;
+        }
+
+        // 화염 측 플레이어의 기본 색상 텍스처를 텍스처 저장소에 등록
+        flamePlayerTextureSet_.baseColorTextureHandle = CreateTextureResource(flameBaseColorTexturePath);
+
+        if (!flamePlayerTextureSet_.baseColorTextureHandle.IsValid())
+        {
+            std::cerr
+                << "[GameClient] Failed to create flame player Base Color texture resource"
+                << ": source=" << flameBaseColorTexturePath
+                << '\n';
+
+            return false;
+        }
+
+        // 화염 측 플레이어의 노멀 텍스처를 텍스처 저장소에 등록
+        flamePlayerTextureSet_.normalTextureHandle = CreateTextureResource(flameNormalMapTexturePath);
+
+        if (!flamePlayerTextureSet_.normalTextureHandle.IsValid())
+        {
+            std::cerr
+                << "[GameClient] Failed to create flame player Normal texture resource"
+                << ": source=" << flameNormalMapTexturePath
+                << '\n';
+
+            return false;
+        }
+
+        // 서리 측 플레이어의 기본 색상 텍스처를 텍스처 저장소에 등록
+        frostPlayerTextureSet_.baseColorTextureHandle = CreateTextureResource(frostBaseColorTexturePath);
+
+        if (!frostPlayerTextureSet_.baseColorTextureHandle.IsValid())
+        {
+            std::cerr
+                << "[GameClient] Failed to create frost player Base Color texture resource"
+                << ": source=" << frostBaseColorTexturePath
+                << '\n';
+
+            return false;
+        }
+
+        // 서리 측 플레이어의 노멀 텍스처를 텍스처 저장소에 등록
+        frostPlayerTextureSet_.normalTextureHandle = CreateTextureResource(frostNormalMapTexturePath);
+
+        if (!frostPlayerTextureSet_.normalTextureHandle.IsValid())
+        {
+            std::cerr
+                << "[GameClient] Failed to create frost player Normal texture resource"
+                << ": source=" << frostNormalMapTexturePath
+                << '\n';
+
+            return false;
+        }
+
         // 아레나 맵 렌더 객체 구성
         RenderObject arenaMapObject;
 
@@ -312,10 +431,77 @@ namespace cna::client
         arenaMapObject.baseColorTextureHandle = arenaMapBaseColorTextureHandle_;
         arenaMapObject.normalMapTextureHandle = arenaMapNormalMapTextureHandle_;
 
-        // 렌더 객체 목록에 아레나 맵 렌더 객체 등록
+        // 일반 렌더 객체 목록에 아레나 맵 렌더 객체 등록
         renderObjects_.push_back(arenaMapObject);
 
+        // 플레이어 렌더 객체 생성 및 등록
+        InitializePlayerRenderObjects();
+
         return true;
+    }
+
+    void ClientApplication::InitializePlayerRenderObjects()
+    {
+        // 기존 플레이어 렌더 객체 제거
+        playerRenderObjects_.clear();
+
+        // 플레이어 2명에 대한 공간 예약
+        playerRenderObjects_.reserve(2);
+
+        Transform3D flamePlayerTransform;
+
+        flamePlayerTransform.position =
+        {
+            -1.5f,
+            0.0f,
+            0.0f
+        };
+
+        // 화염 텍스처를 사용하는 플레이어 렌더 객체 등록
+        playerRenderObjects_.push_back
+        (
+            CreatePlayerRenderObject
+            (
+                flamePlayerTextureSet_,
+                flamePlayerTransform
+            )
+        );
+
+        Transform3D frostPlayerTransform;
+
+        frostPlayerTransform.position =
+        {
+            1.5f,
+            0.0f,
+            0.0f
+        };
+
+        // 서리 텍스처를 사용하는 플레이어 렌더 객체 등록
+        playerRenderObjects_.push_back
+        (
+            CreatePlayerRenderObject
+            (
+                frostPlayerTextureSet_,
+                frostPlayerTransform
+            )
+        );
+    }
+
+    RenderObject ClientApplication::CreatePlayerRenderObject(const PlayerTextureSet& textureSet, const Transform3D& transform) const
+    {
+        RenderObject renderObject;
+
+        // 모든 플레이어가 공유하는 공용 메쉬 핸들 등록
+        renderObject.meshHandle = playerMeshHandle_;
+
+        // 플레이어 외형에 사용할 역할별 기본 색상 및 노멀 텍스처 핸들 등록
+        renderObject.baseColorTextureHandle = textureSet.baseColorTextureHandle;
+        renderObject.normalMapTextureHandle = textureSet.normalTextureHandle;
+
+        // 플레이어 객체마다 독립적으로 사용할 변환 정보 등록
+        renderObject.transform = transform;
+
+        return renderObject;
     }
 
     MeshHandle ClientApplication::CreateMeshResource(const MeshData& meshData)
@@ -366,6 +552,90 @@ namespace cna::client
 
         // 생성된 GPU 텍스처 리소스를 텍스처 저장소에 등록
         return textureRepository_.AddTexture(std::move(texture));
+    }
+
+    TextureHandle ClientApplication::CreateTextureResource(const std::filesystem::path& textureFilePath)
+    {
+        // 파일 경로 기반으로 WIC 디코딩을 수행하여 GPU 텍스처 리소스 생성
+        std::unique_ptr<D3D11Texture> texture = renderer_.CreateTextureFromFile(textureFilePath);
+
+        if (!texture)
+        {
+            return {};
+        }
+
+        // 생성된 GPU 텍스처 리소스를 텍스처 저장소에 등록
+        return textureRepository_.AddTexture(std::move(texture));
+    }
+
+    bool ClientApplication::DrawRenderObject(const RenderObject& renderObject)
+    {
+        // 렌더 객체가 참조하는 GPU 메쉬 조회
+        const D3D11Mesh* const mesh = meshRepository_.FindMesh(renderObject.meshHandle);
+
+        // 렌더 객체가 참조하는 GPU 메쉬를 찾지 못한 경우
+        if (!mesh)
+        {
+            std::cerr
+                << "[GameClient] Cannot find render object mesh"
+                << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        const D3D11Texture* baseColorTexture = nullptr;
+
+        // 렌더 객체가 기본 색상 텍스처를 참조하는 경우 GPU 텍스처 리소스 조회
+        if (renderObject.baseColorTextureHandle.IsValid())
+        {
+            baseColorTexture = textureRepository_.FindTexture(renderObject.baseColorTextureHandle);
+
+            if (!baseColorTexture)
+            {
+                std::cerr
+                    << "[GameClient] Cannot find render object Base Color texture"
+                    << '\n';
+
+                RequestExit(1);
+
+                return false;
+            }
+        }
+
+        const D3D11Texture* normalMapTexture = nullptr;
+
+        // 렌더 객체가 노멀 맵 텍스처를 참조하는 경우 GPU 텍스처 리소스 조회
+        if (renderObject.normalMapTextureHandle.IsValid())
+        {
+            normalMapTexture = textureRepository_.FindTexture(renderObject.normalMapTextureHandle);
+
+            if (!normalMapTexture)
+            {
+                std::cerr
+                    << "[GameClient] Cannot find render object Normal texture"
+                    << '\n';
+
+                RequestExit(1);
+
+                return false;
+            }
+        }
+
+        // 객체별 월드 변환 행렬과 기본 색상 및 노멀 텍스처를 적용하여 렌더 객체 출력
+        if (!renderer_.DrawMesh(*mesh, baseColorTexture, normalMapTexture, renderObject.transform.GetWorldMatrix()))
+        {
+            std::cerr
+                << "[GameClient] Failed to draw render object"
+                << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        return true;
     }
 
     bool ClientApplication::StartConnection()
@@ -419,11 +689,17 @@ namespace cna::client
 
         // GPU 메쉬와 텍스처를 참조하는 모든 렌더 객체 제거
         renderObjects_.clear();
+        playerRenderObjects_.clear();
 
         // 아레나 맵 메쉬 및 텍스처 핸들 무효화
         arenaMapMeshHandle_ = {};
         arenaMapBaseColorTextureHandle_ = {};
         arenaMapNormalMapTextureHandle_ = {};
+
+        // 플레이어 메쉬 및 텍스처 핸들 무효화
+        playerMeshHandle_ = {};
+        flamePlayerTextureSet_ = {};
+        frostPlayerTextureSet_ = {};
 
         // 렌더러보다 먼저 GPU 메쉬와 텍스처 소유권 해제
         meshRepository_.Clear();
@@ -596,71 +872,20 @@ namespace cna::client
             return false;
         }
 
-        // 등록된 렌더 객체를 순회하며 공유 메쉬와 객체별 월드 변환 적용
+        // 등록된 일반 렌더 객체를 순회하며 화면에 출력
         for (const RenderObject& renderObject : renderObjects_)
         {
-            // 렌더 객체가 참조하는 GPU 메쉬 조회
-            const D3D11Mesh* const mesh = meshRepository_.FindMesh(renderObject.meshHandle);
-
-            // 렌더 객체가 참조하는 GPU 메쉬를 찾지 못한 경우
-            if (!mesh)
+            if (!DrawRenderObject(renderObject))
             {
-                std::cerr
-                    << "[GameClient] Cannot find render object mesh"
-                    << '\n';
-
-                RequestExit(1);
-
                 return false;
             }
+        }
 
-            const D3D11Texture* baseColorTexture = nullptr;
-
-            // 렌더 객체가 기본 색상 텍스처를 참조하는 경우 GPU 텍스처 리소스 조회
-            if (renderObject.baseColorTextureHandle.IsValid())
+        // 등록된 플레이어 렌더 객체를 순회하며 화면에 출력
+        for (const RenderObject& playerRenderObject : playerRenderObjects_)
+        {
+            if (!DrawRenderObject(playerRenderObject))
             {
-                baseColorTexture = textureRepository_.FindTexture(renderObject.baseColorTextureHandle);
-
-                if (!baseColorTexture)
-                {
-                    std::cerr
-                        << "[GameClient] Cannot find render object Base Color texture"
-                        << '\n';
-
-                    RequestExit(1);
-
-                    return false;
-                }
-            }
-
-            const D3D11Texture* normalMapTexture = nullptr;
-
-            // 렌더 객체가 노멀 맵 텍스처를 참조하는 경우 GPU 텍스처 리소스 조회
-            if (renderObject.normalMapTextureHandle.IsValid())
-            {
-                normalMapTexture = textureRepository_.FindTexture(renderObject.normalMapTextureHandle);
-
-                if (!normalMapTexture)
-                {
-                    std::cerr
-                        << "[GameClient] Cannot find render object Normal texture"
-                        << '\n';
-
-                    RequestExit(1);
-
-                    return false;
-                }
-            }
-
-            // 객체별 월드 변환 행렬과 기본 색상 및 노멀 텍스처를 적용하여 렌더 객체 출력
-            if (!renderer_.DrawMesh(*mesh, baseColorTexture, normalMapTexture, renderObject.transform.GetWorldMatrix()))
-            {
-                std::cerr
-                    << "[GameClient] Failed to draw render object"
-                    << '\n';
-
-                RequestExit(1);
-
                 return false;
             }
         }
