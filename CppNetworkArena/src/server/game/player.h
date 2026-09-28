@@ -13,6 +13,9 @@ namespace cna::server
     // 플레이어 상태 관리를 위한 구조체
     struct PlayerState
     {
+        // 플레이어의 현재 진영
+        cna::PlayerSide side = cna::PlayerSide::None;
+
         // 플레이어 X 좌표 위치
         float positionX = 0.0f;
         // 플레이어 Y 좌표 위치

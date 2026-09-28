@@ -109,6 +109,42 @@ namespace cna::server
         // 새로운 플레이어에게 적용할 시작 위치 인덱스 계산
         const std::size_t spawnIndex = GetPlayerCount();
 
+        bool flameSideOccupied = false;
+        bool frostSideOccupied = false;
+
+        // 현재 Room에서 사용 중인 플레이어 진영 확인
+        for (const auto& [existingSessionId, existingPlayer] : players_)
+        {
+            const PlayerState& existingPlayerState = existingPlayer.GetState();
+
+            if (existingPlayerState.side == cna::PlayerSide::Flame)
+            {
+                flameSideOccupied = true;
+            }
+            else if (existingPlayerState.side == cna::PlayerSide::Frost)
+            {
+                frostSideOccupied = true;
+            }
+        }
+
+        // 비어 있는 진영을 새로운 플레이어에게 할당
+        cna::PlayerSide playerSide = cna::PlayerSide::None;
+
+        if (!flameSideOccupied)
+        {
+            playerSide = cna::PlayerSide::Flame;
+        }
+        else if (!frostSideOccupied)
+        {
+            playerSide = cna::PlayerSide::Frost;
+        }
+
+        // 유효한 진영을 할당할 수 없는 경우 입장 실패 처리
+        if (playerSide == cna::PlayerSide::None)
+        {
+            return std::nullopt;
+        }
+
         // 플레이어 ID 발급
         const std::optional<cna::PlayerId> playerId = GeneratePlayerId();
 
@@ -130,6 +166,9 @@ namespace cna::server
         const SpawnPosition& spawnPosition = PlayerSpawnPositions[spawnIndex];
 
         PlayerState& playerState = playerIterator->second.GetState();
+
+        // Room에서 할당한 플레이어 진영 적용
+        playerState.side = playerSide;
 
         playerState.positionX = spawnPosition.x;
         playerState.positionY = spawnPosition.y;
@@ -232,6 +271,7 @@ namespace cna::server
                 cna::network::PlayerStateSnapshot
                 {
                     player.GetPlayerId(),
+                    state.side,
                     state.positionX,
                     state.positionY,
                     state.positionZ,

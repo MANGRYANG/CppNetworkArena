@@ -444,6 +444,18 @@ namespace cna::client
         // 모든 플레이어가 공유하는 공용 메쉬 핸들 등록
         renderObject.meshHandle = playerMeshHandle_;
 
+        // 서버에서 전달받은 플레이어 진영에 따라 외형 텍스처 등록
+        if (playerState.side == cna::PlayerSide::Flame)
+        {
+            renderObject.baseColorTextureHandle = flamePlayerTextureSet_.baseColorTextureHandle;
+            renderObject.normalMapTextureHandle = flamePlayerTextureSet_.normalTextureHandle;
+        }
+        else if (playerState.side == cna::PlayerSide::Frost)
+        {
+            renderObject.baseColorTextureHandle = frostPlayerTextureSet_.baseColorTextureHandle;
+            renderObject.normalMapTextureHandle = frostPlayerTextureSet_.normalTextureHandle;
+        }
+
         // 서버에서 전달받은 최초 플레이어 위치를 렌더 객체에 적용
         renderObject.transform.position =
         {

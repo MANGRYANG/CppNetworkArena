@@ -28,6 +28,9 @@ namespace cna::network
         // 클라이언트가 플레이어를 식별하기 위한 고유 ID
         cna::PlayerId playerId = 0;
 
+        // 플레이어의 현재 진영
+        cna::PlayerSide side = cna::PlayerSide::None;
+
         // 플레이어의 현재 월드 위치
         float positionX = 0.0f;
         float positionY = 0.0f;
@@ -56,12 +59,18 @@ namespace cna::network
     inline constexpr std::size_t WorldStateSnapshotFixedPayloadSize = sizeof(std::uint64_t) + sizeof(std::uint32_t) + sizeof(std::uint16_t);
 
     // 플레이어 한 명의 상태가 네트워크 Payload에서 차지하는 크기
-    inline constexpr std::size_t PlayerStateSnapshotSize = sizeof(std::uint32_t) + sizeof(float) * 6;
+    inline constexpr std::size_t PlayerStateSnapshotSize = sizeof(std::uint32_t) + sizeof(std::uint8_t) + sizeof(float) * 6;
 
     // 하나의 WorldStateSnapshot 메시지에 포함할 수 있는 최대 플레이어 수
     inline constexpr std::size_t MaxWorldStateSnapshotPlayerCount =
         (MaxMessageSize - (MessageHeaderSize + WorldStateSnapshotFixedPayloadSize)) /
         PlayerStateSnapshotSize;
+
+    // 네트워크로 전달 가능한 플레이어 진영인지 확인하는 함수
+    inline bool IsValidPlayerSide(const cna::PlayerSide side) noexcept
+    {
+        return (side == cna::PlayerSide::Flame) || (side == cna::PlayerSide::Frost);
+    }
 
     // 플레이어 상태의 모든 실수 값이 정상적인 유한 값인지 확인하는 함수
     inline bool IsFinitePlayerStateSnapshot(const PlayerStateSnapshot& state) noexcept
@@ -109,8 +118,8 @@ namespace cna::network
         // 모든 플레이어를 순회하면서 플레이어 상태 직렬화
         for (const PlayerStateSnapshot& state : snapshot.players)
         {
-            // 유효하지 않은 플레이어 ID나 실수 값이 포함된 경우 실패 처리
-            if (state.playerId == 0 || !IsFinitePlayerStateSnapshot(state))
+            // 유효하지 않은 플레이어 ID나 진영, 실수 값이 포함된 경우 실패 처리
+            if (state.playerId == 0 || !IsValidPlayerSide(state.side) || !IsFinitePlayerStateSnapshot(state))
             {
                 payload.clear();
 
@@ -119,6 +128,10 @@ namespace cna::network
 
             WriteUint32(payload, offset, state.playerId);
             offset += sizeof(std::uint32_t);
+
+            // 플레이어 진영을 1바이트 값으로 직렬화
+            payload[offset] = static_cast<std::byte>(static_cast<std::uint8_t>(state.side));
+            offset += sizeof(std::uint8_t);
 
             WriteFloat32(payload, offset, state.positionX);
             offset += sizeof(float);
@@ -197,6 +210,9 @@ namespace cna::network
             state.playerId = ReadUint32(payload, offset);
             offset += sizeof(std::uint32_t);
 
+            state.side = static_cast<cna::PlayerSide>(std::to_integer<std::uint8_t>(payload[offset]));
+            offset += sizeof(std::uint8_t);
+
             state.positionX = ReadFloat32(payload, offset);
             offset += sizeof(std::uint32_t);
 
@@ -215,8 +231,8 @@ namespace cna::network
             state.velocityZ = ReadFloat32(payload, offset);
             offset += sizeof(std::uint32_t);
 
-            // 유효하지 않은 플레이어 ID나 실수 값이 포함된 경우 실패 처리
-            if (state.playerId == 0 || !IsFinitePlayerStateSnapshot(state))
+            // 유효하지 않은 플레이어 ID나 진영, 실수 값이 포함된 경우 실패 처리
+            if (state.playerId == 0 || !IsValidPlayerSide(state.side) || !IsFinitePlayerStateSnapshot(state))
             {
                 return false;
             }
