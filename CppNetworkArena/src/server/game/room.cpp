@@ -23,6 +23,19 @@ namespace
         float moveZ = 0.0f;
     };
 
+    struct SpawnPosition
+    {
+        float x;
+        float y;
+        float z;
+    };
+
+    constexpr std::array<SpawnPosition, 2> PlayerSpawnPositions =
+    {
+        SpawnPosition{-1.5f, 0.0f, 0.0f},
+        SpawnPosition{ 1.5f, 0.0f, 0.0f}
+    };
+
     // PlayerInput 타입 메시지로 전달받은 원시 세기 값을 -1.0f ~ 1.0f 범위의 이동 입력 벡터로 변환하는 함수
     NormalizedPlayerInput NormalizePlayerInput(const cna::network::PlayerInputPayload& input)
     {
@@ -93,6 +106,9 @@ namespace cna::server
             return std::nullopt;
         }
 
+        // 새로운 플레이어에게 적용할 시작 위치 인덱스 계산
+        const std::size_t spawnIndex = GetPlayerCount();
+
         // 플레이어 ID 발급
         const std::optional<cna::PlayerId> playerId = GeneratePlayerId();
 
@@ -110,6 +126,14 @@ namespace cna::server
         {
             return std::nullopt;
         }
+
+        const SpawnPosition& spawnPosition = PlayerSpawnPositions[spawnIndex];
+
+        PlayerState& playerState = playerIterator->second.GetState();
+
+        playerState.positionX = spawnPosition.x;
+        playerState.positionY = spawnPosition.y;
+        playerState.positionZ = spawnPosition.z;
 
         // 현재 Room에 입장한 플레이어 수 출력
         std::cout
