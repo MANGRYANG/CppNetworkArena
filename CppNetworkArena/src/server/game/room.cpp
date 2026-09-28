@@ -81,6 +81,18 @@ namespace cna::server
             return std::nullopt;
         }
 
+        // 새로운 플레이어가 입장할 공간이 없는 경우 입장시키지 않음
+        if (!HasCapacity())
+        {
+            std::cout
+                << "[Room] Player entry rejected: roomId=" << roomId_
+                << ", activePlayers=" << GetPlayerCount()
+                << ", maxPlayers=" << MaxPlayerCount
+                << '\n';
+
+            return std::nullopt;
+        }
+
         // 플레이어 ID 발급
         const std::optional<cna::PlayerId> playerId = GeneratePlayerId();
 
@@ -262,6 +274,11 @@ namespace cna::server
     std::size_t Room::GetPlayerCount() const noexcept
     {
         return players_.size();
+    }
+
+    bool Room::HasCapacity() const noexcept
+    {
+        return GetPlayerCount() < MaxPlayerCount;
     }
 
     std::optional<cna::PlayerId> Room::GeneratePlayerId() noexcept

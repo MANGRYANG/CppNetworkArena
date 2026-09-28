@@ -872,21 +872,25 @@ namespace cna::client
             return false;
         }
 
-        // 등록된 일반 렌더 객체를 순회하며 화면에 출력
-        for (const RenderObject& renderObject : renderObjects_)
+        // 서버에서 Room 입장이 승인되어 로컬 플레이어 식별 정보를 받은 경우 게임 월드 출력
+        if (clientGameState_.HasPlayerIdentity())
         {
-            if (!DrawRenderObject(renderObject))
+            // 등록된 일반 렌더 객체를 순회하며 화면에 출력
+            for (const RenderObject& renderObject : renderObjects_)
             {
-                return false;
+                if (!DrawRenderObject(renderObject))
+                {
+                    return false;
+                }
             }
-        }
 
-        // 등록된 플레이어 렌더 객체를 순회하며 화면에 출력
-        for (const RenderObject& playerRenderObject : playerRenderObjects_)
-        {
-            if (!DrawRenderObject(playerRenderObject))
+            // 등록된 플레이어 렌더 객체를 순회하며 화면에 출력
+            for (const RenderObject& playerRenderObject : playerRenderObjects_)
             {
-                return false;
+                if (!DrawRenderObject(playerRenderObject))
+                {
+                    return false;
+                }
             }
         }
 

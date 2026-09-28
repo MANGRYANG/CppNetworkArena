@@ -56,7 +56,13 @@ namespace cna::server
         // 현재 Room에 남아 있는 플레이어 수를 반환
         std::size_t GetPlayerCount() const noexcept;
 
+        // 현재 Room에 새로운 플레이어가 입장할 공간이 있는지 반환
+        bool HasCapacity() const noexcept;
+
     private:
+        // 하나의 Room에 입장할 수 있는 최대 플레이어 수
+        static constexpr std::size_t MaxPlayerCount = 2;
+
         // Room 내부에서 사용할 새로운 플레이어 ID를 발급하는 함수
         std::optional<cna::PlayerId> GeneratePlayerId() noexcept;
 
