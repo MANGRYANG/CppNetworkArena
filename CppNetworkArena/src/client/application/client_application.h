@@ -124,6 +124,9 @@ namespace cna::client
         // 현재 프레임에서 수집한 플레이어 이동 입력
         cna::network::PlayerInputPayload currentPlayerInput_;
 
+        // 서버에 마지막으로 전송한 플레이어 이동 입력
+        cna::network::PlayerInputPayload lastSentPlayerInput_;
+
         // GameClient가 표시하는 Win32 플랫폼 윈도우
         Win32Window window_;
 

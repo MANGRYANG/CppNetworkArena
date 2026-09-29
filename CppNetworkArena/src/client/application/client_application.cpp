@@ -768,6 +768,9 @@ namespace cna::client
             return;
         }
 
+        // 새로 할당받은 플레이어를 기준으로 마지막 입력 송신 상태 초기화
+        lastSentPlayerInput_ = {};
+
         // 게임 상태 계층에 저장된 Room ID 조회
         const std::optional<cna::RoomId> roomId = clientGameState_.GetRoomId();
         // 게임 상태 계층에 저장된 로컬 Player ID 조회
@@ -882,8 +885,32 @@ namespace cna::client
 
     void ClientApplication::Update()
     {
+        // 아직 Room 입장이 승인되지 않은 경우 플레이어 입력을 전송하지 않음
+        if (!clientGameState_.HasPlayerIdentity())
+        {
+            return;
+        }
+
         // 현재 키보드 상태를 플레이어 이동 입력으로 구성
         currentPlayerInput_ = CollectPlayerInput();
+
+        // 현재 입력이 마지막으로 서버에 전송한 입력과 동일한 경우 추가로 전송하지 않음
+        if (currentPlayerInput_.moveX == lastSentPlayerInput_.moveX &&
+            currentPlayerInput_.moveY == lastSentPlayerInput_.moveY &&
+            currentPlayerInput_.moveZ == lastSentPlayerInput_.moveZ
+        )
+        {
+            return;
+        }
+
+        // 변경된 플레이어 입력을 서버 송신 큐에 등록
+        if (!networkClient_->SendPlayerInput(currentPlayerInput_))
+        {
+            return;
+        }
+
+        // 송신 큐 등록에 성공한 경우 마지막 전송 입력 갱신
+        lastSentPlayerInput_ = currentPlayerInput_;
     }
 
     bool ClientApplication::Render()
