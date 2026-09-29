@@ -12,4 +12,12 @@ namespace cna
 
     // 서버 게임 시뮬레이션의 실행 순서를 식별하기 위한 Tick
     using ServerTick = std::uint64_t;
+
+    // 플레이어의 현재 진영을 구분하는 열거형
+    enum class PlayerSide : std::uint8_t
+    {
+        None = 0,
+        Flame,
+        Frost
+    };
 }

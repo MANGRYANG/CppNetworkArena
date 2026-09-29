@@ -45,14 +45,21 @@ namespace cna::client
             TextureHandle normalTextureHandle;
         };
 
+        // 플레이어 ID와 해당 플레이어의 렌더 객체를 연결하는 구조체
+        struct PlayerRenderEntry final
+        {
+            cna::PlayerId playerId = 0;
+            RenderObject renderObject;
+        };
+
         // 애플리케이션에서 사용할 CPU 및 GPU 렌더링 자원을 생성하는 함수
         bool InitializeRenderResources();
 
-        // 플레이어 렌더 객체를 생성하고 플레이어 렌더 객체 목록에 등록하는 함수
-        void InitializePlayerRenderObjects();
+        // 서버 플레이어 상태를 기반으로 플레이어 렌더 객체를 생성하는 함수
+        RenderObject CreatePlayerRenderObject(const cna::network::PlayerStateSnapshot& playerState) const;
 
-        // 공용 플레이어 메쉬와 지정된 텍스처 및 변환 정보를 사용하여 플레이어 렌더 객체를 생성하는 함수
-        RenderObject CreatePlayerRenderObject(const PlayerTextureSet& textureSet, const Transform3D& transform) const;
+        // 월드 상태 스냅샷의 플레이어 목록과 플레이어 렌더 객체 목록을 동기화하는 함수
+        void SynchronizePlayerRenderObjects(const cna::network::WorldStateSnapshot& worldState);
 
         // CPU 메쉬 데이터로 GPU 메쉬를 생성하고 메쉬 저장소에 등록하는 함수
         MeshHandle CreateMeshResource(const MeshData& meshData);
@@ -144,8 +151,8 @@ namespace cna::client
         // 화면에 출력할 일반 렌더 객체들을 보관하는 목록
         std::vector<RenderObject> renderObjects_;
 
-        // 화면에 출력할 플레이어 렌더 객체들을 보관하는 목록
-        std::vector<RenderObject> playerRenderObjects_;
+        // 플레이어 렌더 엔트리를 보관하는 목록
+        std::vector<PlayerRenderEntry> playerRenderEntries_;
 
         // 애플리케이션 루프의 상태 플래그
         bool running_ = false;

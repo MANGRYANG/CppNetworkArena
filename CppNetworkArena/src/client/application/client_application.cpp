@@ -434,74 +434,59 @@ namespace cna::client
         // 일반 렌더 객체 목록에 아레나 맵 렌더 객체 등록
         renderObjects_.push_back(arenaMapObject);
 
-        // 플레이어 렌더 객체 생성 및 등록
-        InitializePlayerRenderObjects();
-
         return true;
     }
 
-    void ClientApplication::InitializePlayerRenderObjects()
-    {
-        // 기존 플레이어 렌더 객체 제거
-        playerRenderObjects_.clear();
-
-        // 플레이어 2명에 대한 공간 예약
-        playerRenderObjects_.reserve(2);
-
-        Transform3D flamePlayerTransform;
-
-        flamePlayerTransform.position =
-        {
-            -1.5f,
-            0.0f,
-            0.0f
-        };
-
-        // 화염 텍스처를 사용하는 플레이어 렌더 객체 등록
-        playerRenderObjects_.push_back
-        (
-            CreatePlayerRenderObject
-            (
-                flamePlayerTextureSet_,
-                flamePlayerTransform
-            )
-        );
-
-        Transform3D frostPlayerTransform;
-
-        frostPlayerTransform.position =
-        {
-            1.5f,
-            0.0f,
-            0.0f
-        };
-
-        // 서리 텍스처를 사용하는 플레이어 렌더 객체 등록
-        playerRenderObjects_.push_back
-        (
-            CreatePlayerRenderObject
-            (
-                frostPlayerTextureSet_,
-                frostPlayerTransform
-            )
-        );
-    }
-
-    RenderObject ClientApplication::CreatePlayerRenderObject(const PlayerTextureSet& textureSet, const Transform3D& transform) const
+    RenderObject ClientApplication::CreatePlayerRenderObject(const cna::network::PlayerStateSnapshot& playerState) const
     {
         RenderObject renderObject;
 
         // 모든 플레이어가 공유하는 공용 메쉬 핸들 등록
         renderObject.meshHandle = playerMeshHandle_;
 
-        // 플레이어 외형에 사용할 역할별 기본 색상 및 노멀 텍스처 핸들 등록
-        renderObject.baseColorTextureHandle = textureSet.baseColorTextureHandle;
-        renderObject.normalMapTextureHandle = textureSet.normalTextureHandle;
+        // 서버에서 전달받은 플레이어 진영에 따라 외형 텍스처 등록
+        if (playerState.side == cna::PlayerSide::Flame)
+        {
+            renderObject.baseColorTextureHandle = flamePlayerTextureSet_.baseColorTextureHandle;
+            renderObject.normalMapTextureHandle = flamePlayerTextureSet_.normalTextureHandle;
+        }
+        else if (playerState.side == cna::PlayerSide::Frost)
+        {
+            renderObject.baseColorTextureHandle = frostPlayerTextureSet_.baseColorTextureHandle;
+            renderObject.normalMapTextureHandle = frostPlayerTextureSet_.normalTextureHandle;
+        }
 
-        // 플레이어 객체마다 독립적으로 사용할 변환 정보 등록
-        renderObject.transform = transform;
+        // 서버에서 전달받은 최초 플레이어 위치를 렌더 객체에 적용
+        renderObject.transform.position =
+        {
+            playerState.positionX,
+            playerState.positionY,
+            playerState.positionZ
+        };
 
         return renderObject;
+    }
+
+    void ClientApplication::SynchronizePlayerRenderObjects(const cna::network::WorldStateSnapshot& worldState)
+    {
+        // 이전 월드 상태를 기준으로 생성된 플레이어 렌더 엔트리 제거
+        playerRenderEntries_.clear();
+
+        // 최신 월드 상태의 플레이어 수만큼 공간 예약
+        playerRenderEntries_.reserve(worldState.players.size());
+
+        // 최신 월드 상태의 모든 플레이어를 렌더 엔트리로 변환
+        for (const cna::network::PlayerStateSnapshot& playerState : worldState.players)
+        {
+            playerRenderEntries_.push_back
+            (
+                PlayerRenderEntry
+                {
+                    playerState.playerId,
+                    CreatePlayerRenderObject(playerState)
+                }
+            );
+        }
     }
 
     MeshHandle ClientApplication::CreateMeshResource(const MeshData& meshData)
@@ -689,7 +674,7 @@ namespace cna::client
 
         // GPU 메쉬와 텍스처를 참조하는 모든 렌더 객체 제거
         renderObjects_.clear();
-        playerRenderObjects_.clear();
+        playerRenderEntries_.clear();
 
         // 아레나 맵 메쉬 및 텍스처 핸들 무효화
         arenaMapMeshHandle_ = {};
@@ -826,6 +811,9 @@ namespace cna::client
             return;
         }
 
+        // 최신 월드 상태를 기준으로 플레이어 렌더 엔트리 목록 갱신
+        SynchronizePlayerRenderObjects(*worldState);
+
         std::cout
             << "[GameClient] WorldStateSnapshot received"
             << ": serverTick=" << worldState->serverTick
@@ -872,21 +860,25 @@ namespace cna::client
             return false;
         }
 
-        // 등록된 일반 렌더 객체를 순회하며 화면에 출력
-        for (const RenderObject& renderObject : renderObjects_)
+        // 서버에서 Room 입장이 승인되어 로컬 플레이어 식별 정보를 받은 경우 게임 월드 출력
+        if (clientGameState_.HasPlayerIdentity())
         {
-            if (!DrawRenderObject(renderObject))
+            // 등록된 일반 렌더 객체를 순회하며 화면에 출력
+            for (const RenderObject& renderObject : renderObjects_)
             {
-                return false;
+                if (!DrawRenderObject(renderObject))
+                {
+                    return false;
+                }
             }
-        }
 
-        // 등록된 플레이어 렌더 객체를 순회하며 화면에 출력
-        for (const RenderObject& playerRenderObject : playerRenderObjects_)
-        {
-            if (!DrawRenderObject(playerRenderObject))
+            // 등록된 플레이어 렌더 객체를 순회하며 화면에 출력
+            for (const PlayerRenderEntry& playerRenderEntry : playerRenderEntries_)
             {
-                return false;
+                if (!DrawRenderObject(playerRenderEntry.renderObject))
+                {
+                    return false;
+                }
             }
         }
 

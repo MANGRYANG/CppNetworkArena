@@ -23,6 +23,19 @@ namespace
         float moveZ = 0.0f;
     };
 
+    struct SpawnPosition
+    {
+        float x;
+        float y;
+        float z;
+    };
+
+    constexpr std::array<SpawnPosition, 2> PlayerSpawnPositions =
+    {
+        SpawnPosition{-1.5f, 0.0f, 0.0f},
+        SpawnPosition{ 1.5f, 0.0f, 0.0f}
+    };
+
     // PlayerInput 타입 메시지로 전달받은 원시 세기 값을 -1.0f ~ 1.0f 범위의 이동 입력 벡터로 변환하는 함수
     NormalizedPlayerInput NormalizePlayerInput(const cna::network::PlayerInputPayload& input)
     {
@@ -81,6 +94,57 @@ namespace cna::server
             return std::nullopt;
         }
 
+        // 새로운 플레이어가 입장할 공간이 없는 경우 입장시키지 않음
+        if (!HasCapacity())
+        {
+            std::cout
+                << "[Room] Player entry rejected: roomId=" << roomId_
+                << ", activePlayers=" << GetPlayerCount()
+                << ", maxPlayers=" << MaxPlayerCount
+                << '\n';
+
+            return std::nullopt;
+        }
+
+        // 새로운 플레이어에게 적용할 시작 위치 인덱스 계산
+        const std::size_t spawnIndex = GetPlayerCount();
+
+        bool flameSideOccupied = false;
+        bool frostSideOccupied = false;
+
+        // 현재 Room에서 사용 중인 플레이어 진영 확인
+        for (const auto& [existingSessionId, existingPlayer] : players_)
+        {
+            const PlayerState& existingPlayerState = existingPlayer.GetState();
+
+            if (existingPlayerState.side == cna::PlayerSide::Flame)
+            {
+                flameSideOccupied = true;
+            }
+            else if (existingPlayerState.side == cna::PlayerSide::Frost)
+            {
+                frostSideOccupied = true;
+            }
+        }
+
+        // 비어 있는 진영을 새로운 플레이어에게 할당
+        cna::PlayerSide playerSide = cna::PlayerSide::None;
+
+        if (!flameSideOccupied)
+        {
+            playerSide = cna::PlayerSide::Flame;
+        }
+        else if (!frostSideOccupied)
+        {
+            playerSide = cna::PlayerSide::Frost;
+        }
+
+        // 유효한 진영을 할당할 수 없는 경우 입장 실패 처리
+        if (playerSide == cna::PlayerSide::None)
+        {
+            return std::nullopt;
+        }
+
         // 플레이어 ID 발급
         const std::optional<cna::PlayerId> playerId = GeneratePlayerId();
 
@@ -98,6 +162,17 @@ namespace cna::server
         {
             return std::nullopt;
         }
+
+        const SpawnPosition& spawnPosition = PlayerSpawnPositions[spawnIndex];
+
+        PlayerState& playerState = playerIterator->second.GetState();
+
+        // Room에서 할당한 플레이어 진영 적용
+        playerState.side = playerSide;
+
+        playerState.positionX = spawnPosition.x;
+        playerState.positionY = spawnPosition.y;
+        playerState.positionZ = spawnPosition.z;
 
         // 현재 Room에 입장한 플레이어 수 출력
         std::cout
@@ -196,6 +271,7 @@ namespace cna::server
                 cna::network::PlayerStateSnapshot
                 {
                     player.GetPlayerId(),
+                    state.side,
                     state.positionX,
                     state.positionY,
                     state.positionZ,
@@ -262,6 +338,11 @@ namespace cna::server
     std::size_t Room::GetPlayerCount() const noexcept
     {
         return players_.size();
+    }
+
+    bool Room::HasCapacity() const noexcept
+    {
+        return GetPlayerCount() < MaxPlayerCount;
     }
 
     std::optional<cna::PlayerId> Room::GeneratePlayerId() noexcept
