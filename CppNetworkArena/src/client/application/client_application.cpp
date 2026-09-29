@@ -843,9 +843,47 @@ namespace cna::client
         }
     }
 
+    cna::network::PlayerInputPayload ClientApplication::CollectPlayerInput() const noexcept
+    {
+        cna::network::PlayerInputPayload input;
+
+        // GameClient 윈도우가 현재 활성 윈도우가 아닌 경우 중립 입력 반환
+        if (GetForegroundWindow() != window_.GetHandle())
+        {
+            return input;
+        }
+
+        // W 키가 눌린 경우 +Y 양의 방향 입력 적용
+        if ((GetAsyncKeyState('W') & 0x8000) != 0)
+        {
+            input.moveY += cna::network::MaxPlayerInputAxisRawValue;
+        }
+
+        // A 키가 눌린 경우 X축 음의 방향 입력 적용
+        if ((GetAsyncKeyState('A') & 0x8000) != 0)
+        {
+            input.moveX -= cna::network::MaxPlayerInputAxisRawValue;
+        }
+
+        // S 키가 눌린 경우 -Y 방향 입력 적용
+        if ((GetAsyncKeyState('S') & 0x8000) != 0)
+        {
+            input.moveY -= cna::network::MaxPlayerInputAxisRawValue;
+        }
+
+        // D 키가 눌린 경우 X축 양의 방향 입력 적용
+        if ((GetAsyncKeyState('D') & 0x8000) != 0)
+        {
+            input.moveX += cna::network::MaxPlayerInputAxisRawValue;
+        }
+
+        return input;
+    }
+
     void ClientApplication::Update()
     {
-        // 내부 데이터 및 상태 갱신 로직
+        // 현재 키보드 상태를 플레이어 이동 입력으로 구성
+        currentPlayerInput_ = CollectPlayerInput();
     }
 
     bool ClientApplication::Render()

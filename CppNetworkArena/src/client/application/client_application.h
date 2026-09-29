@@ -103,6 +103,9 @@ namespace cna::client
         // 클라이언트 영역 크기 변경 이벤트를 처리하는 함수
         void HandleWindowResized(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept;
 
+        // 현재 키보드 상태를 수집하여 플레이어 이동 입력을 구성하는 함수
+        cna::network::PlayerInputPayload CollectPlayerInput() const noexcept;
+
         // 애플리케이션 내부 데이터 및 상태를 갱신하는 함수
         void Update();
 
@@ -117,6 +120,9 @@ namespace cna::client
 
         // 서버에서 수신한 현재 클라이언트 게임 상태
         ClientGameState clientGameState_;
+
+        // 현재 프레임에서 수집한 플레이어 이동 입력
+        cna::network::PlayerInputPayload currentPlayerInput_;
 
         // GameClient가 표시하는 Win32 플랫폼 윈도우
         Win32Window window_;
