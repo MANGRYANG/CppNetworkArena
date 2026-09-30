@@ -6,6 +6,7 @@
 
 #include <DirectXMath.h>
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
@@ -456,37 +457,73 @@ namespace cna::client
             renderObject.normalMapTextureHandle = frostPlayerTextureSet_.normalTextureHandle;
         }
 
-        // 서버에서 전달받은 최초 플레이어 위치를 렌더 객체에 적용
-        renderObject.transform.position =
-        {
-            playerState.positionX,
-            playerState.positionY,
-            playerState.positionZ
-        };
-
         return renderObject;
     }
 
     void ClientApplication::SynchronizePlayerRenderObjects(const cna::network::WorldStateSnapshot& worldState)
     {
-        // 이전 월드 상태를 기준으로 생성된 플레이어 렌더 엔트리 제거
-        playerRenderEntries_.clear();
+        // 최신 월드 상태를 기준으로 구성할 플레이어 렌더 엔트리 목록 생성
+        std::vector<PlayerRenderEntry> synchronizedPlayerRenderEntries;
 
         // 최신 월드 상태의 플레이어 수만큼 공간 예약
-        playerRenderEntries_.reserve(worldState.players.size());
+        synchronizedPlayerRenderEntries.reserve(worldState.players.size());
 
-        // 최신 월드 상태의 모든 플레이어를 렌더 엔트리로 변환
+        // 최신 월드 상태의 모든 플레이어를 렌더 엔트리 목록에 동기화
         for (const cna::network::PlayerStateSnapshot& playerState : worldState.players)
         {
-            playerRenderEntries_.push_back
-            (
-                PlayerRenderEntry
+            PlayerRenderEntry* existingPlayerRenderEntry = nullptr;
+
+            // 동일한 Player ID를 사용하는 기존 플레이어 렌더 엔트리 검색
+            for (PlayerRenderEntry& playerRenderEntry : playerRenderEntries_)
+            {
+                if (playerRenderEntry.playerId == playerState.playerId)
                 {
-                    playerState.playerId,
-                    CreatePlayerRenderObject(playerState)
+                    existingPlayerRenderEntry = &playerRenderEntry;
+
+                    break;
                 }
-            );
+            }
+
+            // 일치하는 플레이어 렌더 엔트리가 존재하는 경우 재사용
+            if (existingPlayerRenderEntry)
+            {
+                synchronizedPlayerRenderEntries.push_back
+                (
+                    std::move(*existingPlayerRenderEntry)
+                );
+            }
+            // 일치하는 플레이어 렌더 엔트리를 찾을 수 없는 경우 새로 생성
+            else
+            {
+                synchronizedPlayerRenderEntries.push_back
+                (
+                    PlayerRenderEntry
+                    {
+                        playerState.playerId,
+                        CreatePlayerRenderObject(playerState)
+                    }
+                );
+            }
+
+            PlayerRenderEntry& synchronizedPlayerRenderEntry = synchronizedPlayerRenderEntries.back();
+
+            // 서버에서 전달받은 최신 플레이어 위치를 렌더 객체에 적용
+            synchronizedPlayerRenderEntry.renderObject.transform.position =
+            {
+                playerState.positionX,
+                playerState.positionY,
+                playerState.positionZ
+            };
+
+            // 플레이어가 이동 중인 경우 서버 속도를 기준으로 이동 방향을 계산하여 렌더 방향 설정
+            if (playerState.velocityX != 0.0f || playerState.velocityY != 0.0f)
+            {
+                synchronizedPlayerRenderEntry.renderObject.transform.rotationRadians.z = std::atan2(playerState.velocityX, -playerState.velocityY);
+            }
         }
+
+        // 최신 월드 상태에 대응하는 플레이어 렌더 엔트리 목록으로 교체
+        playerRenderEntries_.swap(synchronizedPlayerRenderEntries);
     }
 
     MeshHandle ClientApplication::CreateMeshResource(const MeshData& meshData)
