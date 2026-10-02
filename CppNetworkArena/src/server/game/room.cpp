@@ -15,6 +15,15 @@ namespace
     // 플레이어가 최대 세기의 입력으로 이동할 때의 초당 이동 속도
     constexpr float PlayerMoveSpeed = 5.0f;
 
+    // XY 게임 평면에서 사용하는 아레나 게임 공간 경계
+    constexpr float ArenaMinX = -3.0f;
+    constexpr float ArenaMaxX = 3.0f;
+    constexpr float ArenaMinY = -2.75f;
+    constexpr float ArenaMaxY = 2.75f;
+
+    // 플레이어 모델이 아레나 맵 경계를 넘어가지 않도록 적용할 여유 범위
+    constexpr float PlayerBoundaryMargin = 0.15f;
+
     // 서버에서의 플레이어 이동을 위해 계산된 값을 담을 구조체
     struct NormalizedPlayerInput
     {
@@ -44,7 +53,7 @@ namespace
         {
             static_cast<float>(input.moveX) / static_cast<float>(cna::network::MaxPlayerInputAxisRawValue),
             static_cast<float>(input.moveY) / static_cast<float>(cna::network::MaxPlayerInputAxisRawValue),
-            static_cast<float>(input.moveZ) / static_cast<float>(cna::network::MaxPlayerInputAxisRawValue)
+            0
         };
 
         // 정규화된 입력 방향 벡터의 길이 제곱
@@ -248,7 +257,26 @@ namespace cna::server
 
             state.positionX += state.velocityX * deltaSeconds;
             state.positionY += state.velocityY * deltaSeconds;
-            state.positionZ += state.velocityZ * deltaSeconds;
+
+            // 플레이어 메쉬가 아레나 경계를 넘어가지 않도록 위치 제한
+            state.positionX =
+                std::clamp
+                (
+                    state.positionX,
+                    ArenaMinX + PlayerBoundaryMargin,
+                    ArenaMaxX - PlayerBoundaryMargin
+                );
+
+            state.positionY =
+                std::clamp
+                (
+                    state.positionY,
+                    ArenaMinY + PlayerBoundaryMargin,
+                    ArenaMaxY - PlayerBoundaryMargin
+                );
+
+            // 현재 게임은 XY 플레이 평면만 사용하므로 Z축 위치 고정
+            state.positionZ = 0.0f;
         }
     }
 
