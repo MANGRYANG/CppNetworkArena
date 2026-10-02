@@ -7,6 +7,7 @@
 #include <DirectXMath.h>
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
@@ -22,6 +23,9 @@ namespace
 
     // 클라이언트가 연결할 서버 포트
     constexpr std::uint16_t TargetPort = 7777;
+
+    // 렌더 보간을 위해 보관할 최대 월드 상태 스냅샷 수
+    constexpr std::size_t MaxWorldStateSnapshotHistorySize = 32;
 
     // DirectX 렌더링 영역으로 사용할 기본 클라이언트 너비
     constexpr int InitialClientWidth = 1280;
@@ -736,6 +740,9 @@ namespace cna::client
         // 종료된 연결의 플레이어 식별 정보 및 월드 상태 초기화
         clientGameState_.Reset();
 
+        // 종료된 연결의 월드 상태 스냅샷 히스토리 초기화
+        worldStateSnapshotHistory_.clear();
+
         // IO 컨텍스트 중지
         ioContext_.stop();
     }
@@ -764,6 +771,9 @@ namespace cna::client
         // 실패한 연결 시도의 게임 상태 초기화
         clientGameState_.Reset();
 
+        // 실패한 연결 시도의 월드 상태 스냅샷 히스토리 초기화
+        worldStateSnapshotHistory_.clear();
+
         // 서버 연결 실패 메시지 출력
         std::cerr
             << "[NetworkClient] Connection failed: "
@@ -775,6 +785,9 @@ namespace cna::client
     {
         // 종료된 연결의 게임 상태 초기화
         clientGameState_.Reset();
+
+        // 종료된 연결의 월드 상태 스냅샷 히스토리 초기화
+        worldStateSnapshotHistory_.clear();
 
         // 서버가 연결을 정상적으로 종료한 경우
         if (error == boost::asio::error::eof)
@@ -804,6 +817,9 @@ namespace cna::client
 
             return;
         }
+
+        // 새 식별 정보에 이전 연결의 월드 상태 스냅샷 히스토리가 남지 않도록 초기화
+        worldStateSnapshotHistory_.clear();
 
         // 새로 할당받은 플레이어를 기준으로 마지막 입력 송신 상태 초기화
         lastSentPlayerInput_ = {};
@@ -849,6 +865,22 @@ namespace cna::client
         if (!worldState)
         {
             return;
+        }
+
+        // 적용된 월드 상태와 현재 스냅샷 수신 시각을 히스토리에 추가
+        worldStateSnapshotHistory_.push_back
+        (
+            BufferedWorldStateSnapshot
+            {
+                *worldState,
+                std::chrono::steady_clock::now()
+            }
+        );
+
+        // 최대 보관 개수를 초과한 경우 가장 오래된 월드 상태 스냅샷 제거
+        if (worldStateSnapshotHistory_.size() > MaxWorldStateSnapshotHistorySize)
+        {
+            worldStateSnapshotHistory_.pop_front();
         }
 
         // 최신 월드 상태를 기준으로 플레이어 렌더 엔트리 목록 갱신

@@ -11,7 +11,9 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/system/error_code.hpp>
 
+#include <chrono>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <vector>
 
@@ -50,6 +52,13 @@ namespace cna::client
         {
             cna::PlayerId playerId = 0;
             RenderObject renderObject;
+        };
+
+        // 월드 상태 스냅샷과 클라이언트 수신 시각을 함께 보관하는 구조체
+        struct BufferedWorldStateSnapshot final
+        {
+            cna::network::WorldStateSnapshot worldState;
+            std::chrono::steady_clock::time_point receivedAt;
         };
 
         // 애플리케이션에서 사용할 CPU 및 GPU 렌더링 자원을 생성하는 함수
@@ -120,6 +129,9 @@ namespace cna::client
 
         // 서버에서 수신한 현재 클라이언트 게임 상태
         ClientGameState clientGameState_;
+
+        // 월드 상태 스냅샷을 수신 순서대로 보관하는 목록
+        std::deque<BufferedWorldStateSnapshot> worldStateSnapshotHistory_;
 
         // 현재 프레임에서 수집한 플레이어 이동 입력
         cna::network::PlayerInputPayload currentPlayerInput_;
