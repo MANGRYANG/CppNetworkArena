@@ -6,6 +6,7 @@
 
 #include <DirectXMath.h>
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
@@ -456,37 +457,73 @@ namespace cna::client
             renderObject.normalMapTextureHandle = frostPlayerTextureSet_.normalTextureHandle;
         }
 
-        // 서버에서 전달받은 최초 플레이어 위치를 렌더 객체에 적용
-        renderObject.transform.position =
-        {
-            playerState.positionX,
-            playerState.positionY,
-            playerState.positionZ
-        };
-
         return renderObject;
     }
 
     void ClientApplication::SynchronizePlayerRenderObjects(const cna::network::WorldStateSnapshot& worldState)
     {
-        // 이전 월드 상태를 기준으로 생성된 플레이어 렌더 엔트리 제거
-        playerRenderEntries_.clear();
+        // 최신 월드 상태를 기준으로 구성할 플레이어 렌더 엔트리 목록 생성
+        std::vector<PlayerRenderEntry> synchronizedPlayerRenderEntries;
 
         // 최신 월드 상태의 플레이어 수만큼 공간 예약
-        playerRenderEntries_.reserve(worldState.players.size());
+        synchronizedPlayerRenderEntries.reserve(worldState.players.size());
 
-        // 최신 월드 상태의 모든 플레이어를 렌더 엔트리로 변환
+        // 최신 월드 상태의 모든 플레이어를 렌더 엔트리 목록에 동기화
         for (const cna::network::PlayerStateSnapshot& playerState : worldState.players)
         {
-            playerRenderEntries_.push_back
-            (
-                PlayerRenderEntry
+            PlayerRenderEntry* existingPlayerRenderEntry = nullptr;
+
+            // 동일한 Player ID를 사용하는 기존 플레이어 렌더 엔트리 검색
+            for (PlayerRenderEntry& playerRenderEntry : playerRenderEntries_)
+            {
+                if (playerRenderEntry.playerId == playerState.playerId)
                 {
-                    playerState.playerId,
-                    CreatePlayerRenderObject(playerState)
+                    existingPlayerRenderEntry = &playerRenderEntry;
+
+                    break;
                 }
-            );
+            }
+
+            // 일치하는 플레이어 렌더 엔트리가 존재하는 경우 재사용
+            if (existingPlayerRenderEntry)
+            {
+                synchronizedPlayerRenderEntries.push_back
+                (
+                    std::move(*existingPlayerRenderEntry)
+                );
+            }
+            // 일치하는 플레이어 렌더 엔트리를 찾을 수 없는 경우 새로 생성
+            else
+            {
+                synchronizedPlayerRenderEntries.push_back
+                (
+                    PlayerRenderEntry
+                    {
+                        playerState.playerId,
+                        CreatePlayerRenderObject(playerState)
+                    }
+                );
+            }
+
+            PlayerRenderEntry& synchronizedPlayerRenderEntry = synchronizedPlayerRenderEntries.back();
+
+            // 서버에서 전달받은 최신 플레이어 위치를 렌더 객체에 적용
+            synchronizedPlayerRenderEntry.renderObject.transform.position =
+            {
+                playerState.positionX,
+                playerState.positionY,
+                playerState.positionZ
+            };
+
+            // 플레이어가 이동 중인 경우 서버 속도를 기준으로 이동 방향을 계산하여 렌더 방향 설정
+            if (playerState.velocityX != 0.0f || playerState.velocityY != 0.0f)
+            {
+                synchronizedPlayerRenderEntry.renderObject.transform.rotationRadians.z = std::atan2(playerState.velocityX, -playerState.velocityY);
+            }
         }
+
+        // 최신 월드 상태에 대응하는 플레이어 렌더 엔트리 목록으로 교체
+        playerRenderEntries_.swap(synchronizedPlayerRenderEntries);
     }
 
     MeshHandle ClientApplication::CreateMeshResource(const MeshData& meshData)
@@ -768,6 +805,9 @@ namespace cna::client
             return;
         }
 
+        // 새로 할당받은 플레이어를 기준으로 마지막 입력 송신 상태 초기화
+        lastSentPlayerInput_ = {};
+
         // 게임 상태 계층에 저장된 Room ID 조회
         const std::optional<cna::RoomId> roomId = clientGameState_.GetRoomId();
         // 게임 상태 계층에 저장된 로컬 Player ID 조회
@@ -843,9 +883,71 @@ namespace cna::client
         }
     }
 
+    cna::network::PlayerInputPayload ClientApplication::CollectPlayerInput() const noexcept
+    {
+        cna::network::PlayerInputPayload input;
+
+        // GameClient 윈도우가 현재 활성 윈도우가 아닌 경우 중립 입력 반환
+        if (GetForegroundWindow() != window_.GetHandle())
+        {
+            return input;
+        }
+
+        // W 키가 눌린 경우 +Y 양의 방향 입력 적용
+        if ((GetAsyncKeyState('W') & 0x8000) != 0)
+        {
+            input.moveY += cna::network::MaxPlayerInputAxisRawValue;
+        }
+
+        // A 키가 눌린 경우 X축 음의 방향 입력 적용
+        if ((GetAsyncKeyState('A') & 0x8000) != 0)
+        {
+            input.moveX -= cna::network::MaxPlayerInputAxisRawValue;
+        }
+
+        // S 키가 눌린 경우 -Y 방향 입력 적용
+        if ((GetAsyncKeyState('S') & 0x8000) != 0)
+        {
+            input.moveY -= cna::network::MaxPlayerInputAxisRawValue;
+        }
+
+        // D 키가 눌린 경우 X축 양의 방향 입력 적용
+        if ((GetAsyncKeyState('D') & 0x8000) != 0)
+        {
+            input.moveX += cna::network::MaxPlayerInputAxisRawValue;
+        }
+
+        return input;
+    }
+
     void ClientApplication::Update()
     {
-        // 내부 데이터 및 상태 갱신 로직
+        // 아직 Room 입장이 승인되지 않은 경우 플레이어 입력을 전송하지 않음
+        if (!clientGameState_.HasPlayerIdentity())
+        {
+            return;
+        }
+
+        // 현재 키보드 상태를 플레이어 이동 입력으로 구성
+        currentPlayerInput_ = CollectPlayerInput();
+
+        // 현재 입력이 마지막으로 서버에 전송한 입력과 동일한 경우 추가로 전송하지 않음
+        if (currentPlayerInput_.moveX == lastSentPlayerInput_.moveX &&
+            currentPlayerInput_.moveY == lastSentPlayerInput_.moveY &&
+            currentPlayerInput_.moveZ == lastSentPlayerInput_.moveZ
+        )
+        {
+            return;
+        }
+
+        // 변경된 플레이어 입력을 서버 송신 큐에 등록
+        if (!networkClient_->SendPlayerInput(currentPlayerInput_))
+        {
+            return;
+        }
+
+        // 송신 큐 등록에 성공한 경우 마지막 전송 입력 갱신
+        lastSentPlayerInput_ = currentPlayerInput_;
     }
 
     bool ClientApplication::Render()
