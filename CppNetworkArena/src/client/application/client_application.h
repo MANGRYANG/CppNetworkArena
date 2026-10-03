@@ -12,6 +12,7 @@
 #include <boost/system/error_code.hpp>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -61,6 +62,15 @@ namespace cna::client
             std::chrono::steady_clock::time_point receivedAt;
         };
 
+        // 렌더 시점에 대한 전후 월드 상태 스냅샷 인덱스 및 보간 계수를 보관하는 구조체
+        struct WorldStateInterpolationSelection final
+        {
+            std::size_t previousSnapshotIndex = 0;
+            std::size_t nextSnapshotIndex = 0;
+            float alpha = 0.0f;
+            bool isValid = false;
+        };
+
         // 애플리케이션에서 사용할 CPU 및 GPU 렌더링 자원을 생성하는 함수
         bool InitializeRenderResources();
 
@@ -69,6 +79,9 @@ namespace cna::client
 
         // 월드 상태 스냅샷의 플레이어 목록과 플레이어 렌더 객체 목록을 동기화하는 함수
         void SynchronizePlayerRenderObjects(const cna::network::WorldStateSnapshot& worldState);
+
+        // 렌더 시점을 기준으로 보간에 사용할 월드 상태 스냅샷 구간을 계산하는 함수
+        void UpdateWorldStateInterpolationSelection() noexcept;
 
         // CPU 메쉬 데이터로 GPU 메쉬를 생성하고 메쉬 저장소에 등록하는 함수
         MeshHandle CreateMeshResource(const MeshData& meshData);
@@ -132,6 +145,9 @@ namespace cna::client
 
         // 월드 상태 스냅샷을 수신 순서대로 보관하는 목록
         std::deque<BufferedWorldStateSnapshot> worldStateSnapshotHistory_;
+
+        // 현재 프레임에서 사용할 월드 상태 스냅샷 보간 구간
+        WorldStateInterpolationSelection worldStateInterpolationSelection_;
 
         // 현재 프레임에서 수집한 플레이어 이동 입력
         cna::network::PlayerInputPayload currentPlayerInput_;

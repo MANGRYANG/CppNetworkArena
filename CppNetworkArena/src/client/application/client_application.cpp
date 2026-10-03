@@ -6,6 +6,8 @@
 
 #include <DirectXMath.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -26,6 +28,10 @@ namespace
 
     // 렌더 보간을 위해 보관할 최대 월드 상태 스냅샷 수
     constexpr std::size_t MaxWorldStateSnapshotHistorySize = 32;
+
+    // 스냅샷 사이를 안정적으로 보간하기 위한 지연 시간
+    using namespace std::chrono_literals;
+    constexpr std::chrono::milliseconds WorldStateInterpolationDelay = 64ms;
 
     // DirectX 렌더링 영역으로 사용할 기본 클라이언트 너비
     constexpr int InitialClientWidth = 1280;
@@ -530,6 +536,52 @@ namespace cna::client
         playerRenderEntries_.swap(synchronizedPlayerRenderEntries);
     }
 
+    void ClientApplication::UpdateWorldStateInterpolationSelection() noexcept
+    {
+        // 이전 프레임에서 계산한 보간 구간 초기화
+        worldStateInterpolationSelection_ = {};
+
+        // 두 스냅샷 사이를 보간할 수 없는 경우
+        if (worldStateSnapshotHistory_.size() < 2)
+        {
+            return;
+        }
+
+        // 플레이어 렌더 시점 계산
+        const std::chrono::steady_clock::time_point renderTime = std::chrono::steady_clock::now() - WorldStateInterpolationDelay;
+
+        // 렌더 시점 전후의 스냅샷 탐색
+        for (std::size_t index = 1; index < worldStateSnapshotHistory_.size(); ++index)
+        {
+            const BufferedWorldStateSnapshot& previousSnapshot = worldStateSnapshotHistory_[index - 1];
+
+            const BufferedWorldStateSnapshot& nextSnapshot = worldStateSnapshotHistory_[index];
+
+            // 렌더 시점이 두 스냅샷 사이에 존재하지 않는 경우
+            if (renderTime < previousSnapshot.receivedAt || renderTime > nextSnapshot.receivedAt)
+            {
+                continue;
+            }
+
+            // 선정된 전후 스냅샷의 시간 간격 계산
+            const float snapshotIntervalSeconds = std::chrono::duration<float>(nextSnapshot.receivedAt - previousSnapshot.receivedAt).count();
+
+            float alpha = 1.0f;
+
+            // 스냅샷 구간에서의 렌더 시각에 대한 상대 위치 계산
+            if (snapshotIntervalSeconds > 0.0f)
+            {
+                const float elapsedSeconds = std::chrono::duration<float>(renderTime - previousSnapshot.receivedAt).count();
+
+                alpha = std::clamp(elapsedSeconds / snapshotIntervalSeconds, 0.0f, 1.0f);
+            }
+
+            worldStateInterpolationSelection_ = {index - 1, index, alpha, true};
+
+            return;
+        }
+    }
+
     MeshHandle ClientApplication::CreateMeshResource(const MeshData& meshData)
     {
         // CPU 메쉬 데이터를 사용하여 GPU 메쉬 생성
@@ -743,6 +795,9 @@ namespace cna::client
         // 종료된 연결의 월드 상태 스냅샷 히스토리 초기화
         worldStateSnapshotHistory_.clear();
 
+        // 종료된 연결의 스냅샷 보간 구간 구조체 초기화
+        worldStateInterpolationSelection_ = {};
+
         // IO 컨텍스트 중지
         ioContext_.stop();
     }
@@ -774,6 +829,9 @@ namespace cna::client
         // 실패한 연결 시도의 월드 상태 스냅샷 히스토리 초기화
         worldStateSnapshotHistory_.clear();
 
+        // 실패한 연결의 스냅샷 보간 구간 구조체 초기화
+        worldStateInterpolationSelection_ = {};
+
         // 서버 연결 실패 메시지 출력
         std::cerr
             << "[NetworkClient] Connection failed: "
@@ -788,6 +846,9 @@ namespace cna::client
 
         // 종료된 연결의 월드 상태 스냅샷 히스토리 초기화
         worldStateSnapshotHistory_.clear();
+
+        // 종료된 연결의 스냅샷 보간 구간 구조체 초기화
+        worldStateInterpolationSelection_ = {};
 
         // 서버가 연결을 정상적으로 종료한 경우
         if (error == boost::asio::error::eof)
@@ -820,6 +881,9 @@ namespace cna::client
 
         // 새 식별 정보에 이전 연결의 월드 상태 스냅샷 히스토리가 남지 않도록 초기화
         worldStateSnapshotHistory_.clear();
+
+        // 이전 연결의 스냅샷 보간 구간 구조체 초기화
+        worldStateInterpolationSelection_ = {};
 
         // 새로 할당받은 플레이어를 기준으로 마지막 입력 송신 상태 초기화
         lastSentPlayerInput_ = {};
@@ -959,6 +1023,9 @@ namespace cna::client
         {
             return;
         }
+
+        // 렌더 시점을 기준으로 월드 상태 스냅샷 보간 구간 계산
+        UpdateWorldStateInterpolationSelection();
 
         // 현재 키보드 상태를 플레이어 이동 입력으로 구성
         currentPlayerInput_ = CollectPlayerInput();
