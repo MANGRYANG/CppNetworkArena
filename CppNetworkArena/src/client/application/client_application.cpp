@@ -6,7 +6,10 @@
 
 #include <DirectXMath.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
@@ -22,6 +25,16 @@ namespace
 
     // 클라이언트가 연결할 서버 포트
     constexpr std::uint16_t TargetPort = 7777;
+
+    // 렌더 보간을 위해 보관할 최대 월드 상태 스냅샷 수
+    constexpr std::size_t MaxWorldStateSnapshotHistorySize = 32;
+
+    // 스냅샷 사이를 안정적으로 보간하기 위한 지연 시간
+    using namespace std::chrono_literals;
+    constexpr std::chrono::milliseconds WorldStateInterpolationDelay = 64ms;
+
+    // 플레이어의 한 바퀴 회전에 해당하는 라디안 값
+    constexpr float FullRotationRadians = 6.28318530717958647692f;
 
     // DirectX 렌더링 영역으로 사용할 기본 클라이언트 너비
     constexpr int InitialClientWidth = 1280;
@@ -526,6 +539,149 @@ namespace cna::client
         playerRenderEntries_.swap(synchronizedPlayerRenderEntries);
     }
 
+    void ClientApplication::UpdateWorldStateInterpolationSelection() noexcept
+    {
+        // 이전 프레임에서 계산한 보간 구간 초기화
+        worldStateInterpolationSelection_ = {};
+
+        // 두 스냅샷 사이를 보간할 수 없는 경우
+        if (worldStateSnapshotHistory_.size() < 2)
+        {
+            return;
+        }
+
+        // 플레이어 렌더 시점 계산
+        const std::chrono::steady_clock::time_point renderTime = std::chrono::steady_clock::now() - WorldStateInterpolationDelay;
+
+        // 렌더 시점 전후의 스냅샷 탐색
+        for (std::size_t index = 1; index < worldStateSnapshotHistory_.size(); ++index)
+        {
+            const BufferedWorldStateSnapshot& previousSnapshot = worldStateSnapshotHistory_[index - 1];
+
+            const BufferedWorldStateSnapshot& nextSnapshot = worldStateSnapshotHistory_[index];
+
+            // 렌더 시점이 두 스냅샷 사이에 존재하지 않는 경우
+            if (renderTime < previousSnapshot.receivedAt || renderTime > nextSnapshot.receivedAt)
+            {
+                continue;
+            }
+
+            // 선정된 전후 스냅샷의 시간 간격 계산
+            const float snapshotIntervalSeconds = std::chrono::duration<float>(nextSnapshot.receivedAt - previousSnapshot.receivedAt).count();
+
+            float alpha = 1.0f;
+
+            // 스냅샷 구간에서의 렌더 시각에 대한 상대 위치 계산
+            if (snapshotIntervalSeconds > 0.0f)
+            {
+                const float elapsedSeconds = std::chrono::duration<float>(renderTime - previousSnapshot.receivedAt).count();
+
+                alpha = std::clamp(elapsedSeconds / snapshotIntervalSeconds, 0.0f, 1.0f);
+            }
+
+            worldStateInterpolationSelection_ = {index - 1, index, alpha, true};
+
+            return;
+        }
+    }
+
+    void ClientApplication::ApplyInterpolatedPlayerStates() noexcept
+    {
+        // 현재 프레임에서 사용할 유효한 보간 구간이 없는 경우 플레이어 상태를 갱신하지 않음
+        if (!worldStateInterpolationSelection_.isValid)
+        {
+            return;
+        }
+
+        const cna::network::WorldStateSnapshot& previousWorldState = worldStateSnapshotHistory_[worldStateInterpolationSelection_.previousSnapshotIndex].worldState;
+        const cna::network::WorldStateSnapshot& nextWorldState = worldStateSnapshotHistory_[worldStateInterpolationSelection_.nextSnapshotIndex].worldState;
+        const float alpha = worldStateInterpolationSelection_.alpha;
+
+        // 현재 존재하는 모든 플레이어 렌더 엔트리의 상태를 보간된 월드 상태에 맞추어 갱신
+        for (PlayerRenderEntry& playerRenderEntry : playerRenderEntries_)
+        {
+            const cna::network::PlayerStateSnapshot* previousPlayerState = nullptr;
+            const cna::network::PlayerStateSnapshot* nextPlayerState = nullptr;
+
+            // 이전 스냅샷에서 동일한 Player ID의 상태 검색
+            for (const cna::network::PlayerStateSnapshot& playerState : previousWorldState.players)
+            {
+                if (playerState.playerId == playerRenderEntry.playerId)
+                {
+                    previousPlayerState = &playerState;
+
+                    break;
+                }
+            }
+
+            // 다음 스냅샷에서 동일한 Player ID의 상태 검색
+            for (const cna::network::PlayerStateSnapshot& playerState : nextWorldState.players)
+            {
+                if (playerState.playerId == playerRenderEntry.playerId)
+                {
+                    nextPlayerState = &playerState;
+
+                    break;
+                }
+            }
+
+            // 두 스냅샷 모두에서 플레이어 상태를 찾은 경우에만 플레이어 상태 보간
+            if (!previousPlayerState || !nextPlayerState)
+            {
+                continue;
+            }
+
+            // 플레이어 위치 보간
+            playerRenderEntry.renderObject.transform.position =
+            {
+                previousPlayerState->positionX + (nextPlayerState->positionX - previousPlayerState->positionX) * alpha,
+                previousPlayerState->positionY + (nextPlayerState->positionY - previousPlayerState->positionY) * alpha,
+                previousPlayerState->positionZ + (nextPlayerState->positionZ - previousPlayerState->positionZ) * alpha
+            };
+
+            // 전후 스냅샷의 이동 상태 확인
+            const bool previousPlayerMoving = previousPlayerState->velocityX != 0.0f || previousPlayerState->velocityY != 0.0f;
+            const bool nextPlayerMoving = nextPlayerState->velocityX != 0.0f || nextPlayerState->velocityY != 0.0f;
+
+            // 두 스냅샷 모두 정지 상태인 경우 기존 렌더 방향 유지
+            if (!previousPlayerMoving && !nextPlayerMoving)
+            {
+                continue;
+            }
+
+            // 전후 스냅샷에서의 플레이어 속도를 기반으로 Z축 기준 회전각 계산
+            const float previousFacingAngleRadians = std::atan2(previousPlayerState->velocityX, -previousPlayerState->velocityY);
+            const float nextFacingAngleRadians = std::atan2(nextPlayerState->velocityX, -nextPlayerState->velocityY);
+
+            // 이전 스냅샷에서 정지 상태였던 경우 새 이동 방향을 바로 적용
+            if (!previousPlayerMoving)
+            {
+                playerRenderEntry.renderObject.transform.rotationRadians.z = nextFacingAngleRadians;
+
+                continue;
+            }
+
+            // 이후 스냅샷이 정지 상태인 경우 기존의 회전각 유지
+            if (!nextPlayerMoving)
+            {
+                playerRenderEntry.renderObject.transform.rotationRadians.z = previousFacingAngleRadians;
+
+                continue;
+            }
+
+            // 각도 경계를 넘어갈 때 가장 짧은 회전 방향으로 보간할 각도 차이 계산
+            const float shortestAngleDelta =
+                std::remainder
+                (
+                    nextFacingAngleRadians - previousFacingAngleRadians,
+                    FullRotationRadians
+                );
+
+            // 플레이어 회전 보간
+            playerRenderEntry.renderObject.transform.rotationRadians.z = previousFacingAngleRadians + shortestAngleDelta * alpha;
+        }
+    }
+
     MeshHandle ClientApplication::CreateMeshResource(const MeshData& meshData)
     {
         // CPU 메쉬 데이터를 사용하여 GPU 메쉬 생성
@@ -736,6 +892,12 @@ namespace cna::client
         // 종료된 연결의 플레이어 식별 정보 및 월드 상태 초기화
         clientGameState_.Reset();
 
+        // 종료된 연결의 월드 상태 스냅샷 히스토리 초기화
+        worldStateSnapshotHistory_.clear();
+
+        // 종료된 연결의 스냅샷 보간 구간 구조체 초기화
+        worldStateInterpolationSelection_ = {};
+
         // IO 컨텍스트 중지
         ioContext_.stop();
     }
@@ -764,6 +926,12 @@ namespace cna::client
         // 실패한 연결 시도의 게임 상태 초기화
         clientGameState_.Reset();
 
+        // 실패한 연결 시도의 월드 상태 스냅샷 히스토리 초기화
+        worldStateSnapshotHistory_.clear();
+
+        // 실패한 연결의 스냅샷 보간 구간 구조체 초기화
+        worldStateInterpolationSelection_ = {};
+
         // 서버 연결 실패 메시지 출력
         std::cerr
             << "[NetworkClient] Connection failed: "
@@ -775,6 +943,12 @@ namespace cna::client
     {
         // 종료된 연결의 게임 상태 초기화
         clientGameState_.Reset();
+
+        // 종료된 연결의 월드 상태 스냅샷 히스토리 초기화
+        worldStateSnapshotHistory_.clear();
+
+        // 종료된 연결의 스냅샷 보간 구간 구조체 초기화
+        worldStateInterpolationSelection_ = {};
 
         // 서버가 연결을 정상적으로 종료한 경우
         if (error == boost::asio::error::eof)
@@ -804,6 +978,12 @@ namespace cna::client
 
             return;
         }
+
+        // 새 식별 정보에 이전 연결의 월드 상태 스냅샷 히스토리가 남지 않도록 초기화
+        worldStateSnapshotHistory_.clear();
+
+        // 이전 연결의 스냅샷 보간 구간 구조체 초기화
+        worldStateInterpolationSelection_ = {};
 
         // 새로 할당받은 플레이어를 기준으로 마지막 입력 송신 상태 초기화
         lastSentPlayerInput_ = {};
@@ -849,6 +1029,22 @@ namespace cna::client
         if (!worldState)
         {
             return;
+        }
+
+        // 적용된 월드 상태와 현재 스냅샷 수신 시각을 히스토리에 추가
+        worldStateSnapshotHistory_.push_back
+        (
+            BufferedWorldStateSnapshot
+            {
+                *worldState,
+                std::chrono::steady_clock::now()
+            }
+        );
+
+        // 최대 보관 개수를 초과한 경우 가장 오래된 월드 상태 스냅샷 제거
+        if (worldStateSnapshotHistory_.size() > MaxWorldStateSnapshotHistorySize)
+        {
+            worldStateSnapshotHistory_.pop_front();
         }
 
         // 최신 월드 상태를 기준으로 플레이어 렌더 엔트리 목록 갱신
@@ -927,6 +1123,12 @@ namespace cna::client
         {
             return;
         }
+
+        // 렌더 시점을 기준으로 월드 상태 스냅샷 보간 구간 계산
+        UpdateWorldStateInterpolationSelection();
+
+        // 계산된 보간 구간을 기반으로 플레이어 위치와 회전 보간 및 갱신
+        ApplyInterpolatedPlayerStates();
 
         // 현재 키보드 상태를 플레이어 이동 입력으로 구성
         currentPlayerInput_ = CollectPlayerInput();
