@@ -33,6 +33,9 @@ namespace
     using namespace std::chrono_literals;
     constexpr std::chrono::milliseconds WorldStateInterpolationDelay = 64ms;
 
+    // 플레이어의 한 바퀴 회전에 해당하는 라디안 값
+    constexpr float FullRotationRadians = 6.28318530717958647692f;
+
     // DirectX 렌더링 영역으로 사용할 기본 클라이언트 너비
     constexpr int InitialClientWidth = 1280;
 
@@ -582,6 +585,103 @@ namespace cna::client
         }
     }
 
+    void ClientApplication::ApplyInterpolatedPlayerStates() noexcept
+    {
+        // 현재 프레임에서 사용할 유효한 보간 구간이 없는 경우 플레이어 상태를 갱신하지 않음
+        if (!worldStateInterpolationSelection_.isValid)
+        {
+            return;
+        }
+
+        const cna::network::WorldStateSnapshot& previousWorldState = worldStateSnapshotHistory_[worldStateInterpolationSelection_.previousSnapshotIndex].worldState;
+        const cna::network::WorldStateSnapshot& nextWorldState = worldStateSnapshotHistory_[worldStateInterpolationSelection_.nextSnapshotIndex].worldState;
+        const float alpha = worldStateInterpolationSelection_.alpha;
+
+        // 현재 존재하는 모든 플레이어 렌더 엔트리의 상태를 보간된 월드 상태에 맞추어 갱신
+        for (PlayerRenderEntry& playerRenderEntry : playerRenderEntries_)
+        {
+            const cna::network::PlayerStateSnapshot* previousPlayerState = nullptr;
+            const cna::network::PlayerStateSnapshot* nextPlayerState = nullptr;
+
+            // 이전 스냅샷에서 동일한 Player ID의 상태 검색
+            for (const cna::network::PlayerStateSnapshot& playerState : previousWorldState.players)
+            {
+                if (playerState.playerId == playerRenderEntry.playerId)
+                {
+                    previousPlayerState = &playerState;
+
+                    break;
+                }
+            }
+
+            // 다음 스냅샷에서 동일한 Player ID의 상태 검색
+            for (const cna::network::PlayerStateSnapshot& playerState : nextWorldState.players)
+            {
+                if (playerState.playerId == playerRenderEntry.playerId)
+                {
+                    nextPlayerState = &playerState;
+
+                    break;
+                }
+            }
+
+            // 두 스냅샷 모두에서 플레이어 상태를 찾은 경우에만 플레이어 상태 보간
+            if (!previousPlayerState || !nextPlayerState)
+            {
+                continue;
+            }
+
+            // 플레이어 위치 보간
+            playerRenderEntry.renderObject.transform.position =
+            {
+                previousPlayerState->positionX + (nextPlayerState->positionX - previousPlayerState->positionX) * alpha,
+                previousPlayerState->positionY + (nextPlayerState->positionY - previousPlayerState->positionY) * alpha,
+                previousPlayerState->positionZ + (nextPlayerState->positionZ - previousPlayerState->positionZ) * alpha
+            };
+
+            // 전후 스냅샷의 이동 상태 확인
+            const bool previousPlayerMoving = previousPlayerState->velocityX != 0.0f || previousPlayerState->velocityY != 0.0f;
+            const bool nextPlayerMoving = nextPlayerState->velocityX != 0.0f || nextPlayerState->velocityY != 0.0f;
+
+            // 두 스냅샷 모두 정지 상태인 경우 기존 렌더 방향 유지
+            if (!previousPlayerMoving && !nextPlayerMoving)
+            {
+                continue;
+            }
+
+            // 전후 스냅샷에서의 플레이어 속도를 기반으로 Z축 기준 회전각 계산
+            const float previousFacingAngleRadians = std::atan2(previousPlayerState->velocityX, -previousPlayerState->velocityY);
+            const float nextFacingAngleRadians = std::atan2(nextPlayerState->velocityX, -nextPlayerState->velocityY);
+
+            // 이전 스냅샷에서 정지 상태였던 경우 새 이동 방향을 바로 적용
+            if (!previousPlayerMoving)
+            {
+                playerRenderEntry.renderObject.transform.rotationRadians.z = nextFacingAngleRadians;
+
+                continue;
+            }
+
+            // 이후 스냅샷이 정지 상태인 경우 기존의 회전각 유지
+            if (!nextPlayerMoving)
+            {
+                playerRenderEntry.renderObject.transform.rotationRadians.z = previousFacingAngleRadians;
+
+                continue;
+            }
+
+            // 각도 경계를 넘어갈 때 가장 짧은 회전 방향으로 보간할 각도 차이 계산
+            const float shortestAngleDelta =
+                std::remainder
+                (
+                    nextFacingAngleRadians - previousFacingAngleRadians,
+                    FullRotationRadians
+                );
+
+            // 플레이어 회전 보간
+            playerRenderEntry.renderObject.transform.rotationRadians.z = previousFacingAngleRadians + shortestAngleDelta * alpha;
+        }
+    }
+
     MeshHandle ClientApplication::CreateMeshResource(const MeshData& meshData)
     {
         // CPU 메쉬 데이터를 사용하여 GPU 메쉬 생성
@@ -1026,6 +1126,9 @@ namespace cna::client
 
         // 렌더 시점을 기준으로 월드 상태 스냅샷 보간 구간 계산
         UpdateWorldStateInterpolationSelection();
+
+        // 계산된 보간 구간을 기반으로 플레이어 위치와 회전 보간 및 갱신
+        ApplyInterpolatedPlayerStates();
 
         // 현재 키보드 상태를 플레이어 이동 입력으로 구성
         currentPlayerInput_ = CollectPlayerInput();

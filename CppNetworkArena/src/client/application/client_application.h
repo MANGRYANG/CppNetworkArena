@@ -83,6 +83,9 @@ namespace cna::client
         // 렌더 시점을 기준으로 보간에 사용할 월드 상태 스냅샷 구간을 계산하는 함수
         void UpdateWorldStateInterpolationSelection() noexcept;
 
+        // 현재 보간 구간을 기준으로 플레이어 렌더 객체의 위치 및 회전을 갱신하는 함수
+        void ApplyInterpolatedPlayerStates() noexcept;
+
         // CPU 메쉬 데이터로 GPU 메쉬를 생성하고 메쉬 저장소에 등록하는 함수
         MeshHandle CreateMeshResource(const MeshData& meshData);
 
