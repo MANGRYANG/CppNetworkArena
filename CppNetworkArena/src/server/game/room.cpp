@@ -8,6 +8,7 @@
 #include <cmath>
 #include <limits>
 #include <iostream>
+#include <iterator>
 #include <utility>
 
 namespace
@@ -23,6 +24,9 @@ namespace
 
     // 플레이어 모델이 아레나 맵 경계를 넘어가지 않도록 적용할 여유 범위
     constexpr float PlayerBoundaryMargin = 0.15f;
+
+    // 플레이어 간 충돌 판정에 사용할 원형 충돌 영역의 반지름
+    constexpr float PlayerCollisionRadius = 0.15f;
 
     // 서버에서의 플레이어 이동을 위해 계산된 값을 담을 구조체
     struct NormalizedPlayerInput
@@ -115,9 +119,6 @@ namespace cna::server
             return std::nullopt;
         }
 
-        // 새로운 플레이어에게 적용할 시작 위치 인덱스 계산
-        const std::size_t spawnIndex = GetPlayerCount();
-
         bool flameSideOccupied = false;
         bool frostSideOccupied = false;
 
@@ -172,16 +173,13 @@ namespace cna::server
             return std::nullopt;
         }
 
-        const SpawnPosition& spawnPosition = PlayerSpawnPositions[spawnIndex];
-
         PlayerState& playerState = playerIterator->second.GetState();
 
         // Room에서 할당한 플레이어 진영 적용
         playerState.side = playerSide;
 
-        playerState.positionX = spawnPosition.x;
-        playerState.positionY = spawnPosition.y;
-        playerState.positionZ = spawnPosition.z;
+        // 할당된 진영에 해당하는 시작 위치 적용
+        ResetPlayerPosition(playerState);
 
         // 현재 Room에 입장한 플레이어 수 출력
         std::cout
@@ -277,6 +275,26 @@ namespace cna::server
 
             // 현재 게임은 XY 플레이 평면만 사용하므로 Z축 위치 고정
             state.positionZ = 0.0f;
+        }
+
+        // Room에 등록된 플레이어의 모든 조합에 대해 충돌 검사
+        for (auto firstPlayerIterator = players_.begin(); firstPlayerIterator != players_.end(); ++firstPlayerIterator)
+        {
+            for (auto secondPlayerIterator = std::next(firstPlayerIterator); secondPlayerIterator != players_.end(); ++secondPlayerIterator)
+            {
+                PlayerState& firstPlayerState = firstPlayerIterator->second.GetState();
+                PlayerState& secondPlayerState = secondPlayerIterator->second.GetState();
+
+                // 두 플레이어가 충돌하지 않은 경우 다음 조합 검사
+                if (!ArePlayersColliding(firstPlayerState, secondPlayerState))
+                {
+                    continue;
+                }
+
+                // 충돌한 두 플레이어를 각자의 시작 위치로 재배치
+                ResetPlayerPosition(firstPlayerState);
+                ResetPlayerPosition(secondPlayerState);
+            }
         }
     }
 
@@ -394,5 +412,44 @@ namespace cna::server
         }
 
         return playerId;
+    }
+
+    bool Room::ArePlayersColliding(const PlayerState& firstPlayerState, const PlayerState& secondPlayerState) noexcept
+    {
+        // XY 플레이 평면에서 두 플레이어 중심 사이의 거리 벡터 계산
+        const float deltaX = secondPlayerState.positionX - firstPlayerState.positionX;
+        const float deltaY = secondPlayerState.positionY - firstPlayerState.positionY;
+
+        // 플레이어 사이 거리 제곱 계산
+        const float distanceSquared = deltaX * deltaX + deltaY * deltaY;
+
+        // 두 플레이어의 원형 충돌 영역이 닿거나 겹친 경우 충돌로 판정
+        return distanceSquared <= PlayerCollisionRadius * PlayerCollisionRadius * 4.0f;
+    }
+
+    void Room::ResetPlayerPosition(PlayerState& playerState) noexcept
+    {
+        const SpawnPosition* spawnPosition = nullptr;
+
+        // 플레이어 진영에 해당하는 시작 위치 선택
+        if (playerState.side == cna::PlayerSide::Flame)
+        {
+            spawnPosition = &PlayerSpawnPositions[0];
+        }
+        else if (playerState.side == cna::PlayerSide::Frost)
+        {
+            spawnPosition = &PlayerSpawnPositions[1];
+        }
+
+        // 유효한 진영에 해당하는 시작 위치가 없는 경우 위치를 변경하지 않음
+        if (!spawnPosition)
+        {
+            return;
+        }
+
+        // 플레이어 위치를 스폰 위치로 이동
+        playerState.positionX = spawnPosition->x;
+        playerState.positionY = spawnPosition->y;
+        playerState.positionZ = spawnPosition->z;
     }
 }
