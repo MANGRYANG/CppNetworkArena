@@ -16,6 +16,15 @@ namespace
     // 플레이어가 최대 세기의 입력으로 이동할 때의 초당 이동 속도
     constexpr float PlayerMoveSpeed = 5.0f;
 
+    // Dash 사용 중인 플레이어의 초당 이동 속도
+    constexpr float PlayerDashSpeed = 15.0f;
+
+    // 한 번의 Dash가 유지되는 시간
+    constexpr float PlayerDashDurationSeconds = 0.16f;
+
+    // Dash 사용 후 다음 Dash까지 필요한 대기 시간
+    constexpr float PlayerDashCooldownSeconds = 1.0f;
+
     // 공격 진영과 수비 진영이 교체되는 시간 간격
     constexpr float AttackRoleSwitchIntervalSeconds = 3.0f;
 
@@ -255,6 +264,44 @@ namespace cna::server
         state.velocityY = normalizedInput.moveY * PlayerMoveSpeed;
         state.velocityZ = normalizedInput.moveZ * PlayerMoveSpeed;
 
+        // 현재 Dash 입력의 상승 에지 확인
+        const bool dashRequested = input.dash && !state.dashInputActive;
+
+        // 현재 Dash 입력 상태 저장
+        state.dashInputActive = input.dash;
+
+        // 게임이 중지 상태인 경우 Dash를 시작하지 않음
+        if (attackingSide_ == cna::PlayerSide::None)
+        {
+            return true;
+        }
+
+        // 새로운 Dash 요청이 아닌 경우 Dash를 시작하지 않음
+        if (!dashRequested)
+        {
+            return true;
+        }
+
+        // Dash 쿨다운이 남아 있는 경우 Dash를 시작하지 않음
+        if (state.dashCooldownRemainingSeconds > 0.0f)
+        {
+            return true;
+        }
+
+        // 이동 방향 입력이 없는 경우 Dash를 시작하지 않음
+        if (normalizedInput.moveX == 0.0f && normalizedInput.moveY == 0.0f)
+        {
+            return true;
+        }
+
+        // Dash 방향 저장
+        state.dashDirectionX = normalizedInput.moveX;
+        state.dashDirectionY = normalizedInput.moveY;
+
+        // Dash 지속 시간 및 쿨다운 시작
+        state.dashRemainingSeconds = PlayerDashDurationSeconds;
+        state.dashCooldownRemainingSeconds = PlayerDashCooldownSeconds;
+
         return true;
     }
 
@@ -275,8 +322,35 @@ namespace cna::server
                 Player& player = playerEntry.second;
                 PlayerState& state = player.GetState();
 
-                state.positionX += state.velocityX * deltaSeconds;
-                state.positionY += state.velocityY * deltaSeconds;
+                // 현재 Tick 내에서 플레이어가 이동 가능한 시간
+                float remainingMovementSeconds = deltaSeconds;
+
+                // Dash 지속시간이 남아 있는 경우 Dash 방향으로 우선 이동
+                if (state.dashRemainingSeconds > 0.0f)
+                {
+                    // 현재 Tick 내에서 Dash가 적용되는 sub-Tick 시간
+                    const float dashDeltaSeconds = std::min(deltaSeconds, state.dashRemainingSeconds);
+
+                    // Dash 적용 시간만큼 Dash 이동
+                    state.positionX += state.dashDirectionX * PlayerDashSpeed * dashDeltaSeconds;
+                    state.positionY += state.dashDirectionY * PlayerDashSpeed * dashDeltaSeconds;
+
+                    // 사용한 Dash 지속시간 차감
+                    state.dashRemainingSeconds = std::max(0.0f, state.dashRemainingSeconds - dashDeltaSeconds);
+
+                    // 플레이어 이동 가능 시간에서 이동에 사용한 Dash 지속시간 차감  
+                    remainingMovementSeconds -= dashDeltaSeconds;
+                }
+
+                // 현재 Tick에서 Dash 이동 종료 후 남은 시간이 있는 경우 일반 이동
+                if (remainingMovementSeconds > 0.0f)
+                {
+                    state.positionX += state.velocityX * remainingMovementSeconds;
+                    state.positionY += state.velocityY * remainingMovementSeconds;
+                }
+
+                // Dash 쿨다운 감소
+                state.dashCooldownRemainingSeconds = std::max(0.0f, state.dashCooldownRemainingSeconds - deltaSeconds);
 
                 // 플레이어 메쉬가 아레나 경계를 넘어가지 않도록 위치 제한
                 state.positionX =
@@ -329,6 +403,15 @@ namespace cna::server
                             << '\n';
                     }
 
+                    // 충돌한 플레이어의 Dash 종료
+                    firstPlayerState.dashDirectionX = 0.0f;
+                    firstPlayerState.dashDirectionY = 0.0f;
+                    firstPlayerState.dashRemainingSeconds = 0.0f;
+
+                    secondPlayerState.dashDirectionX = 0.0f;
+                    secondPlayerState.dashDirectionY = 0.0f;
+                    secondPlayerState.dashRemainingSeconds = 0.0f;
+
                     // 충돌한 두 플레이어를 각자의 시작 위치로 재배치
                     ResetPlayerPosition(firstPlayerState);
                     ResetPlayerPosition(secondPlayerState);
@@ -356,6 +439,18 @@ namespace cna::server
             const Player& player = playerEntry.second;
             const PlayerState& state = player.GetState();
 
+            float snapshotVelocityX = state.velocityX;
+            float snapshotVelocityY = state.velocityY;
+            float snapshotVelocityZ = state.velocityZ;
+
+            // Dash 중인 경우 실제 Dash 이동 속도를 스냅샷에 적용
+            if (state.dashRemainingSeconds > 0.0f)
+            {
+                snapshotVelocityX = state.dashDirectionX * PlayerDashSpeed;
+                snapshotVelocityY = state.dashDirectionY * PlayerDashSpeed;
+                snapshotVelocityZ = 0.0f;
+            }
+
             snapshot.players.push_back
             (
                 cna::network::PlayerStateSnapshot
@@ -365,9 +460,9 @@ namespace cna::server
                     state.positionX,
                     state.positionY,
                     state.positionZ,
-                    gameRunning ? state.velocityX : 0.0f,
-                    gameRunning ? state.velocityY : 0.0f,
-                    gameRunning ? state.velocityZ : 0.0f
+                    gameRunning ? snapshotVelocityX : 0.0f,
+                    gameRunning ? snapshotVelocityY : 0.0f,
+                    gameRunning ? snapshotVelocityZ : 0.0f
                 }
             );
         }
@@ -537,6 +632,17 @@ namespace cna::server
 
         // 최초 공격 진영의 유지 시간 설정
         attackRoleSwitchRemainingSeconds_ = AttackRoleSwitchIntervalSeconds;
+
+        // 플레이어별 Dash 상태 초기화
+        for (auto& playerEntry : players_)
+        {
+            PlayerState& state = playerEntry.second.GetState();
+
+            state.dashDirectionX = 0.0f;
+            state.dashDirectionY = 0.0f;
+            state.dashRemainingSeconds = 0.0f;
+            state.dashCooldownRemainingSeconds = 0.0f;
+        }
     }
 
     void Room::StopGame() noexcept

@@ -29,6 +29,20 @@ namespace cna::server
         float velocityY = 0.0f;
         // Z축 방향 플레이어 속도
         float velocityZ = 0.0f;
+
+        // 현재 Dash 입력의 활성화 상태
+        bool dashInputActive = false;
+
+        // 진행 중인 Dash의 X축 이동 방향
+        float dashDirectionX = 0.0f;
+        // 진행 중인 Dash의 Y축 이동 방향
+        float dashDirectionY = 0.0f;
+
+        // 현재 Dash가 끝날 때까지 남은 시간
+        float dashRemainingSeconds = 0.0f;
+
+        // 다음 Dash를 사용할 수 있을 때까지 남은 시간
+        float dashCooldownRemainingSeconds = 0.0f;
     };
 
     // Room에 입장할 플레이어를 나타내는 클래스

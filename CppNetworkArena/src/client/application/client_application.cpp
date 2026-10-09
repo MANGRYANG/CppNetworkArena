@@ -1113,6 +1113,12 @@ namespace cna::client
             input.moveX += cna::network::MaxPlayerInputAxisRawValue;
         }
 
+        // Space 키가 눌린 경우 Dash 입력 적용
+        if ((GetAsyncKeyState(VK_SPACE) & 0x8000) != 0)
+        {
+            input.dash = true;
+        }
+
         return input;
     }
 
@@ -1136,7 +1142,8 @@ namespace cna::client
         // 현재 입력이 마지막으로 서버에 전송한 입력과 동일한 경우 추가로 전송하지 않음
         if (currentPlayerInput_.moveX == lastSentPlayerInput_.moveX &&
             currentPlayerInput_.moveY == lastSentPlayerInput_.moveY &&
-            currentPlayerInput_.moveZ == lastSentPlayerInput_.moveZ
+            currentPlayerInput_.moveZ == lastSentPlayerInput_.moveZ &&
+            currentPlayerInput_.dash == lastSentPlayerInput_.dash
         )
         {
             return;

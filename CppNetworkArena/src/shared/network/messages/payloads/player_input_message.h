@@ -14,6 +14,7 @@ PlayerInput 타입 메시지 Payload wire format :
 [moveX: int16]
 [moveY: int16]
 [moveZ: int16]
+[dash:  uint8]
 *
 */
 
@@ -28,10 +29,13 @@ namespace cna::network
         std::int16_t moveY = 0;
         // 플레이어의 Z축 이동 입력 세기 원시값
         std::int16_t moveZ = 0;
+
+        // 플레이어 대쉬 기능 활성화 여부
+        bool dash = false;
     };
 
     // PlayerInput Payload가 네트워크 스트림에서 차지하는 크기
-    inline constexpr std::size_t PlayerInputPayloadSize = sizeof(std::int16_t) * 3;
+    inline constexpr std::size_t PlayerInputPayloadSize = sizeof(std::int16_t) * 3 + sizeof(std::uint8_t);
 
     // 각 축에 보낼 수 있는 입력 세기의 최대 원시값
     inline constexpr std::int16_t MaxPlayerInputAxisRawValue = 1000;
@@ -66,6 +70,7 @@ namespace cna::network
         WriteUint16(payload, 0, std::bit_cast<std::uint16_t>(input.moveX));
         WriteUint16(payload, sizeof(std::int16_t), std::bit_cast<std::uint16_t>(input.moveY));
         WriteUint16(payload, sizeof(std::int16_t) * 2, std::bit_cast<std::uint16_t>(input.moveZ));
+        payload[sizeof(std::int16_t) * 3] = std::byte{ static_cast<unsigned char>(input.dash ? 1 : 0) };
 
         return true;
     }
@@ -91,6 +96,16 @@ namespace cna::network
         {
             return false;
         }
+
+        const std::uint8_t dashValue = std::to_integer<std::uint8_t>(payload[sizeof(std::int16_t) * 3]);
+
+        // Dash 입력 값이 유효하지 않은 경우
+        if (dashValue > 1)
+        {
+            return false;
+        }
+
+        decodedInput.dash = (dashValue != 0);
 
         input = decodedInput;
 
