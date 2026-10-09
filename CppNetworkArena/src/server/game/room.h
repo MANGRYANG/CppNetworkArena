@@ -72,11 +72,35 @@ namespace cna::server
         // 플레이어의 위치를 스폰 위치로 이동시키는 함수
         static void ResetPlayerPosition(PlayerState& playerState) noexcept;
 
+        // 특정 진영에 속한 플레이어가 현재 Room에 존재하는지 반환하는 함수
+        bool HasPlayerOnSide(cna::PlayerSide side) const noexcept;
+
+        // 게임을 진행할 수 있는 진영 구성이 갖춰졌는지 반환하는 함수
+        bool IsAttackDefenseReady() const noexcept;
+
+        // 게임을 시작하는 함수
+        void StartGame() noexcept;
+
+        // 게임을 중지하는 함수
+        void StopGame() noexcept;
+
+        // 경과 시간을 기준으로 공격/수비 상태를 갱신하는 함수
+        void UpdateAttackDefenseState(float deltaSeconds) noexcept;
+
+        // 현재 공격 진영을 반대 진영으로 교체하는 함수
+        void SwitchAttackingSide() noexcept;
+
         // 서버에서 Room을 구분하기 위해 사용할 고유 ID
         cna::RoomId roomId_ = 0;
 
         // 다음 플레이어에게 발급할 Room 내부 플레이어 ID
         cna::PlayerId nextPlayerId_ = 1;
+
+        // 현재 공격 역할을 가진 플레이어 진영
+        cna::PlayerSide attackingSide_ = cna::PlayerSide::None;
+
+        // 다음 공격 진영 교대까지 남은 시간
+        float attackRoleSwitchRemainingSeconds_ = 0.0f;
 
         // Room에 입장한 플레이어를 관리하기 위한 컨테이너
         std::unordered_map<SessionId, Player> players_;

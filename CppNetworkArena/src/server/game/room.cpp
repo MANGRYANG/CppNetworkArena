@@ -16,6 +16,9 @@ namespace
     // 플레이어가 최대 세기의 입력으로 이동할 때의 초당 이동 속도
     constexpr float PlayerMoveSpeed = 5.0f;
 
+    // 공격 진영과 수비 진영이 교체되는 시간 간격
+    constexpr float AttackRoleSwitchIntervalSeconds = 3.0f;
+
     // XY 게임 평면에서 사용하는 아레나 게임 공간 경계
     constexpr float ArenaMinX = -3.0f;
     constexpr float ArenaMaxX = 3.0f;
@@ -181,6 +184,12 @@ namespace cna::server
         // 할당된 진영에 해당하는 시작 위치 적용
         ResetPlayerPosition(playerState);
 
+        // 게임을 진행할 수 있는 진영 구성이 갖춰져 있고 게임이 중지된 상태인 경우 게임 시작
+        if (attackingSide_ == cna::PlayerSide::None && IsAttackDefenseReady())
+        {
+            StartGame();
+        }
+
         // 현재 Room에 입장한 플레이어 수 출력
         std::cout
             << "[Room] Player entered: roomId=" << roomId_
@@ -206,6 +215,12 @@ namespace cna::server
 
         // Room에 입장한 플레이어 목록에서 플레이어 제거
         players_.erase(playerIterator);
+
+        // 게임을 진행할 수 없는 진영 구성이 된 경우 게임 중지
+        if (!IsAttackDefenseReady())
+        {
+            StopGame();
+        }
 
         // 현재 Room에 입장한 플레이어 수 출력
         std::cout
@@ -247,54 +262,60 @@ namespace cna::server
             return;
         }
 
-        // Room에 등록된 모든 플레이어의 위치를 현재 플레이어 속도 값 기준으로 갱신
-        for (auto& playerEntry : players_)
+        // 게임이 진행 중인 경우
+        if (attackingSide_ != cna::PlayerSide::None)
         {
-            Player& player = playerEntry.second;
-            PlayerState& state = player.GetState();
-
-            state.positionX += state.velocityX * deltaSeconds;
-            state.positionY += state.velocityY * deltaSeconds;
-
-            // 플레이어 메쉬가 아레나 경계를 넘어가지 않도록 위치 제한
-            state.positionX =
-                std::clamp
-                (
-                    state.positionX,
-                    ArenaMinX + PlayerBoundaryMargin,
-                    ArenaMaxX - PlayerBoundaryMargin
-                );
-
-            state.positionY =
-                std::clamp
-                (
-                    state.positionY,
-                    ArenaMinY + PlayerBoundaryMargin,
-                    ArenaMaxY - PlayerBoundaryMargin
-                );
-
-            // 현재 게임은 XY 플레이 평면만 사용하므로 Z축 위치 고정
-            state.positionZ = 0.0f;
-        }
-
-        // Room에 등록된 플레이어의 모든 조합에 대해 충돌 검사
-        for (auto firstPlayerIterator = players_.begin(); firstPlayerIterator != players_.end(); ++firstPlayerIterator)
-        {
-            for (auto secondPlayerIterator = std::next(firstPlayerIterator); secondPlayerIterator != players_.end(); ++secondPlayerIterator)
+            // Room에 등록된 모든 플레이어의 위치를 현재 플레이어 속도 값 기준으로 갱신
+            for (auto& playerEntry : players_)
             {
-                PlayerState& firstPlayerState = firstPlayerIterator->second.GetState();
-                PlayerState& secondPlayerState = secondPlayerIterator->second.GetState();
+                Player& player = playerEntry.second;
+                PlayerState& state = player.GetState();
 
-                // 두 플레이어가 충돌하지 않은 경우 다음 조합 검사
-                if (!ArePlayersColliding(firstPlayerState, secondPlayerState))
-                {
-                    continue;
-                }
+                state.positionX += state.velocityX * deltaSeconds;
+                state.positionY += state.velocityY * deltaSeconds;
 
-                // 충돌한 두 플레이어를 각자의 시작 위치로 재배치
-                ResetPlayerPosition(firstPlayerState);
-                ResetPlayerPosition(secondPlayerState);
+                // 플레이어 메쉬가 아레나 경계를 넘어가지 않도록 위치 제한
+                state.positionX =
+                    std::clamp
+                    (
+                        state.positionX,
+                        ArenaMinX + PlayerBoundaryMargin,
+                        ArenaMaxX - PlayerBoundaryMargin
+                    );
+
+                state.positionY =
+                    std::clamp
+                    (
+                        state.positionY,
+                        ArenaMinY + PlayerBoundaryMargin,
+                        ArenaMaxY - PlayerBoundaryMargin
+                    );
+
+                // 현재 게임은 XY 플레이 평면만 사용하므로 Z축 위치 고정
+                state.positionZ = 0.0f;
             }
+
+            // Room에 등록된 플레이어의 모든 조합에 대해 충돌 검사
+            for (auto firstPlayerIterator = players_.begin(); firstPlayerIterator != players_.end(); ++firstPlayerIterator)
+            {
+                for (auto secondPlayerIterator = std::next(firstPlayerIterator); secondPlayerIterator != players_.end(); ++secondPlayerIterator)
+                {
+                    PlayerState& firstPlayerState = firstPlayerIterator->second.GetState();
+                    PlayerState& secondPlayerState = secondPlayerIterator->second.GetState();
+
+                    // 두 플레이어가 충돌하지 않은 경우 다음 조합 검사
+                    if (!ArePlayersColliding(firstPlayerState, secondPlayerState))
+                    {
+                        continue;
+                    }
+
+                    // 충돌한 두 플레이어를 각자의 시작 위치로 재배치
+                    ResetPlayerPosition(firstPlayerState);
+                    ResetPlayerPosition(secondPlayerState);
+                }
+            }
+
+            UpdateAttackDefenseState(deltaSeconds);
         }
     }
 
@@ -305,6 +326,9 @@ namespace cna::server
         snapshot.serverTick = serverTick;
         snapshot.roomId = roomId_;
         snapshot.players.reserve(players_.size());
+
+        // 현재 게임 진행 여부
+        const bool gameRunning = attackingSide_ != cna::PlayerSide::None;
 
         // Room에 등록된 모든 플레이어의 현재 상태를 스냅샷에 추가
         for (const auto& playerEntry : players_)
@@ -321,9 +345,9 @@ namespace cna::server
                     state.positionX,
                     state.positionY,
                     state.positionZ,
-                    state.velocityX,
-                    state.velocityY,
-                    state.velocityZ
+                    gameRunning ? state.velocityX : 0.0f,
+                    gameRunning ? state.velocityY : 0.0f,
+                    gameRunning ? state.velocityZ : 0.0f
                 }
             );
         }
@@ -344,22 +368,25 @@ namespace cna::server
 
     void Room::Broadcast(const cna::network::MessageType type, const std::span<const std::byte> payload)
     {
+        // 만료된 플레이어를 순회가 끝난 뒤 퇴장 처리하도록 설정하여 반복자 무효화 방지
+        std::vector<SessionId> expiredSessionIds;
+        expiredSessionIds.reserve(players_.size());
+
         // 송신 실패 세션을 순회가 끝난 뒤 종료하도록 설정하여 반복자 무효화 방지
         std::vector<std::shared_ptr<Session>> failedSessions;
         failedSessions.reserve(players_.size());
 
         // Room에 등록된 플레이어 목록을 순회
-        auto playerIterator = players_.begin();
-
-        while (playerIterator != players_.end())
+        for (auto playerIterator = players_.begin(); playerIterator != players_.end(); ++playerIterator)
         {
             // 플레이어가 참조하는 실제 세션 객체 획득 시도
             const std::shared_ptr<Session> session = playerIterator->second.LockSession();
 
-            // 이미 만료된 세션인 경우 해당 플레이어를 Room에서 제거
+            // 이미 만료된 세션인 경우 해당 플레이어를 Room에서 퇴장 처리
             if (!session)
             {
-                playerIterator = players_.erase(playerIterator);
+                // 해당 플레이어를 순회 완료 후 퇴장 처리할 수 있게 기록
+                expiredSessionIds.push_back(playerIterator->first);
 
                 continue;
             }
@@ -370,13 +397,18 @@ namespace cna::server
                 // 전송 실패 시 송신 실패 세션 목록에 추가
                 failedSessions.push_back(session);
             }
-
-            ++playerIterator;
         }
 
-        // 순회 완료 후 송신 실패 세션 일괄 종료
+        // 순회 완료 후 만료된 세션에 해당하는 플레이어 퇴장 처리
+        for (const SessionId sessionId : expiredSessionIds)
+        {
+            Leave(sessionId);
+        }
+
+        // 순회 완료 후 송신 실패 세션에 해당하는 플레이어 퇴장 처리 및 세션 일괄 종료
         for (const std::shared_ptr<Session>& session : failedSessions)
         {
+            Leave(session->GetId());
             session->Stop();
         }
     }
@@ -451,5 +483,88 @@ namespace cna::server
         playerState.positionX = spawnPosition->x;
         playerState.positionY = spawnPosition->y;
         playerState.positionZ = spawnPosition->z;
+    }
+
+    bool Room::HasPlayerOnSide(cna::PlayerSide side) const noexcept
+    {
+        // 지정한 진영에 속한 플레이어 탐색
+        for (const auto& playerEntry : players_)
+        {
+            // 플레이어 탐색에 성공한 경우 true 반환
+            if (playerEntry.second.GetState().side == side)
+            {
+                return true;
+            }
+        }
+
+        // 플레이어 탐색에 실패한 경우 false 반환
+        return false;
+    }
+
+    bool Room::IsAttackDefenseReady() const noexcept
+    {
+        // Flame과 Frost 양쪽 진영에 플레이어가 존재해야 게임 가능
+        return HasPlayerOnSide(cna::PlayerSide::Flame) && HasPlayerOnSide(cna::PlayerSide::Frost);
+    }
+
+    void Room::StartGame() noexcept
+    {
+        // 최초 공격 진영은 Flame으로 지정
+        attackingSide_ = cna::PlayerSide::Flame;
+
+        // 최초 공격 진영의 유지 시간 설정
+        attackRoleSwitchRemainingSeconds_ = AttackRoleSwitchIntervalSeconds;
+    }
+
+    void Room::StopGame() noexcept
+    {
+        // 현재 공격 진영 제거
+        attackingSide_ = cna::PlayerSide::None;
+
+        // 공격 진영 교대 타이머 초기화
+        attackRoleSwitchRemainingSeconds_ = 0.0f;
+    }
+
+    void Room::UpdateAttackDefenseState(float deltaSeconds) noexcept
+    {
+        // 다음 공격 진영 교대까지 남은 시간 카운팅
+        attackRoleSwitchRemainingSeconds_ -= deltaSeconds;
+
+        // 하나의 Tick에서 교대 시점을 지난 만큼 공격 진영 교대
+        while (attackRoleSwitchRemainingSeconds_ <= 0.0f)
+        {
+            SwitchAttackingSide();
+
+            attackRoleSwitchRemainingSeconds_ += AttackRoleSwitchIntervalSeconds;
+        }
+    }
+
+    void Room::SwitchAttackingSide() noexcept
+    {
+        // Flame이 공격 중인 경우 Frost로 공격 역할 교대
+        if (attackingSide_ == cna::PlayerSide::Flame)
+        {
+            attackingSide_ = cna::PlayerSide::Frost;
+
+            std::cout
+                << "[Room] Attacking side switched"
+                << ": roomId=" << roomId_
+                << ", attackingSide=Frost"
+                << '\n';
+
+            return;
+        }
+
+        // Frost가 공격 중인 경우 Flame으로 공격 역할 교대
+        if (attackingSide_ == cna::PlayerSide::Frost)
+        {
+            attackingSide_ = cna::PlayerSide::Flame;
+
+            std::cout
+                << "[Room] Attacking side switched"
+                << ": roomId=" << roomId_
+                << ", attackingSide=Flame"
+                << '\n';
+        }
     }
 }
