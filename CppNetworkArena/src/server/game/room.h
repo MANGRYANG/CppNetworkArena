@@ -8,6 +8,7 @@
 #include <network/messages/core/message_type.h>
 #include <network/messages/payloads/world_state_snapshot_message.h>
 
+#include <array>
 #include <cstddef>
 #include <memory>
 #include <span>
@@ -90,6 +91,9 @@ namespace cna::server
         // 현재 공격 진영을 반대 진영으로 교체하는 함수
         void SwitchAttackingSide() noexcept;
 
+        // 플레이어 진영의 인덱스를 반환하는 함수
+        static std::optional<std::size_t> GetPlayerSideIndex(cna::PlayerSide side) noexcept;
+
         // 서버에서 Room을 구분하기 위해 사용할 고유 ID
         cna::RoomId roomId_ = 0;
 
@@ -101,6 +105,9 @@ namespace cna::server
 
         // 다음 공격 진영 교대까지 남은 시간
         float attackRoleSwitchRemainingSeconds_ = 0.0f;
+
+        // 각 진영별 현재 점수를 보관하기 위한 배열
+        std::array<std::size_t, 2> sideScores_{};
 
         // Room에 입장한 플레이어를 관리하기 위한 컨테이너
         std::unordered_map<SessionId, Player> players_;

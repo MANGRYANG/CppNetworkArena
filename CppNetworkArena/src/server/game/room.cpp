@@ -19,6 +19,10 @@ namespace
     // 공격 진영과 수비 진영이 교체되는 시간 간격
     constexpr float AttackRoleSwitchIntervalSeconds = 3.0f;
 
+    // 진영별 점수 배열에서 사용하는 인덱스
+    constexpr std::size_t FlameSideIndex = 0;
+    constexpr std::size_t FrostSideIndex = 1;
+
     // XY 게임 평면에서 사용하는 아레나 게임 공간 경계
     constexpr float ArenaMinX = -3.0f;
     constexpr float ArenaMaxX = 3.0f;
@@ -309,6 +313,22 @@ namespace cna::server
                         continue;
                     }
 
+                    // 현재 공격 역할이 할당된 진영의 인덱스
+                    const std::optional<std::size_t> attackingSideIndex = GetPlayerSideIndex(attackingSide_);
+
+                    if (attackingSideIndex)
+                    {
+                        // 현재 공격 역할이 할당된 진영에 득점 처리
+                        ++sideScores_[*attackingSideIndex];
+
+                        std::cout
+                            << "[Room] Score updated"
+                            << ": roomId=" << roomId_
+                            << ", flameScore=" << sideScores_[FlameSideIndex]
+                            << ", frostScore=" << sideScores_[FrostSideIndex]
+                            << '\n';
+                    }
+
                     // 충돌한 두 플레이어를 각자의 시작 위치로 재배치
                     ResetPlayerPosition(firstPlayerState);
                     ResetPlayerPosition(secondPlayerState);
@@ -509,6 +529,9 @@ namespace cna::server
 
     void Room::StartGame() noexcept
     {
+        // 득점 배열 초기화
+        sideScores_ = {};
+
         // 최초 공격 진영은 Flame으로 지정
         attackingSide_ = cna::PlayerSide::Flame;
 
@@ -566,5 +589,22 @@ namespace cna::server
                 << ", attackingSide=Flame"
                 << '\n';
         }
+    }
+
+    std::optional<std::size_t> Room::GetPlayerSideIndex(cna::PlayerSide side) noexcept
+    {
+        // Flame 진영인 경우
+        if (side == cna::PlayerSide::Flame)
+        {
+            return FlameSideIndex;
+        }
+
+        // Frost 진영인 경우
+        if (side == cna::PlayerSide::Frost)
+        {
+            return FrostSideIndex;
+        }
+
+        return std::nullopt;
     }
 }
