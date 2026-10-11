@@ -23,12 +23,10 @@ namespace cna::server
         // 플레이어 Z 좌표 위치
         float positionZ = 0.0f;
 
-        // X축 방향 플레이어 속도
-        float velocityX = 0.0f;
-        // Y축 방향 플레이어 속도
-        float velocityY = 0.0f;
-        // Z축 방향 플레이어 속도
-        float velocityZ = 0.0f;
+        // X축 플레이어 이동 방향
+        float directionX = 0.0f;
+        // Y축 플레이어 이동 방향
+        float directionY = 0.0f;
 
         // 현재 Dash 입력의 활성화 상태
         bool dashInputActive = false;

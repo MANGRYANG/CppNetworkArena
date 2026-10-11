@@ -36,10 +36,9 @@ namespace cna::network
         float positionY = 0.0f;
         float positionZ = 0.0f;
 
-        // 플레이어의 현재 이동 속도
-        float velocityX = 0.0f;
-        float velocityY = 0.0f;
-        float velocityZ = 0.0f;
+        // 정규화된 플레이어의 현재 이동 방향
+        float directionX = 0.0f;
+        float directionY = 0.0f;
     };
 
     // 서버가 클라이언트로 전송하는 Room의 게임 상태 스냅샷의 논리 데이터
@@ -59,7 +58,7 @@ namespace cna::network
     inline constexpr std::size_t WorldStateSnapshotFixedPayloadSize = sizeof(std::uint64_t) + sizeof(std::uint32_t) + sizeof(std::uint16_t);
 
     // 플레이어 한 명의 상태가 네트워크 Payload에서 차지하는 크기
-    inline constexpr std::size_t PlayerStateSnapshotSize = sizeof(std::uint32_t) + sizeof(std::uint8_t) + sizeof(float) * 6;
+    inline constexpr std::size_t PlayerStateSnapshotSize = sizeof(std::uint32_t) + sizeof(std::uint8_t) + sizeof(float) * 5;
 
     // 하나의 WorldStateSnapshot 메시지에 포함할 수 있는 최대 플레이어 수
     inline constexpr std::size_t MaxWorldStateSnapshotPlayerCount =
@@ -77,7 +76,7 @@ namespace cna::network
     {
         return
             std::isfinite(state.positionX) && std::isfinite(state.positionY) && std::isfinite(state.positionZ) &&
-            std::isfinite(state.velocityX) && std::isfinite(state.velocityY) && std::isfinite(state.velocityZ);
+            std::isfinite(state.directionX) && std::isfinite(state.directionY);
     }
 
     // WorldStateSnapshot Payload를 직렬화하는 함수
@@ -142,13 +141,10 @@ namespace cna::network
             WriteFloat32(payload, offset, state.positionZ);
             offset += sizeof(float);
 
-            WriteFloat32(payload, offset, state.velocityX);
+            WriteFloat32(payload, offset, state.directionX);
             offset += sizeof(float);
 
-            WriteFloat32(payload, offset, state.velocityY);
-            offset += sizeof(float);
-
-            WriteFloat32(payload, offset, state.velocityZ);
+            WriteFloat32(payload, offset, state.directionY);
             offset += sizeof(float);
         }
 
@@ -222,13 +218,10 @@ namespace cna::network
             state.positionZ = ReadFloat32(payload, offset);
             offset += sizeof(std::uint32_t);
 
-            state.velocityX = ReadFloat32(payload, offset);
+            state.directionX = ReadFloat32(payload, offset);
             offset += sizeof(std::uint32_t);
 
-            state.velocityY = ReadFloat32(payload, offset);
-            offset += sizeof(std::uint32_t);
-
-            state.velocityZ = ReadFloat32(payload, offset);
+            state.directionY = ReadFloat32(payload, offset);
             offset += sizeof(std::uint32_t);
 
             // 유효하지 않은 플레이어 ID나 진영, 실수 값이 포함된 경우 실패 처리

@@ -259,10 +259,9 @@ namespace cna::server
         // 플레이어 상태를 수정 가능하도록 참조
         PlayerState& state = playerIterator->second.GetState();
 
-        // 이동 입력 벡터에 최대 세기의 입력으로 이동할 때의 초당 이동 속도를 곱해 플레이어 속도 갱신
-        state.velocityX = normalizedInput.moveX * PlayerMoveSpeed;
-        state.velocityY = normalizedInput.moveY * PlayerMoveSpeed;
-        state.velocityZ = normalizedInput.moveZ * PlayerMoveSpeed;
+        // 플레이어 방향 갱신
+        state.directionX = normalizedInput.moveX;
+        state.directionY = normalizedInput.moveY;
 
         // 현재 Dash 입력의 상승 에지 확인
         const bool dashRequested = input.dash && !state.dashInputActive;
@@ -316,7 +315,7 @@ namespace cna::server
         // 게임이 진행 중인 경우
         if (attackingSide_ != cna::PlayerSide::None)
         {
-            // Room에 등록된 모든 플레이어의 위치를 현재 플레이어 속도 값 기준으로 갱신
+            // Room에 등록된 모든 플레이어의 위치를 현재 플레이어 이동 상태를 기준으로 갱신
             for (auto& playerEntry : players_)
             {
                 Player& player = playerEntry.second;
@@ -345,8 +344,8 @@ namespace cna::server
                 // 현재 Tick에서 Dash 이동 종료 후 남은 시간이 있는 경우 일반 이동
                 if (remainingMovementSeconds > 0.0f)
                 {
-                    state.positionX += state.velocityX * remainingMovementSeconds;
-                    state.positionY += state.velocityY * remainingMovementSeconds;
+                    state.positionX += state.directionX * PlayerMoveSpeed * remainingMovementSeconds;
+                    state.positionY += state.directionY * PlayerMoveSpeed * remainingMovementSeconds;
                 }
 
                 // Dash 쿨다운 감소
@@ -439,16 +438,14 @@ namespace cna::server
             const Player& player = playerEntry.second;
             const PlayerState& state = player.GetState();
 
-            float snapshotVelocityX = state.velocityX;
-            float snapshotVelocityY = state.velocityY;
-            float snapshotVelocityZ = state.velocityZ;
+            float snapshotDirectionX = state.directionX;
+            float snapshotDirectionY = state.directionY;
 
-            // Dash 중인 경우 실제 Dash 이동 속도를 스냅샷에 적용
+            // Dash 중인 경우
             if (state.dashRemainingSeconds > 0.0f)
             {
-                snapshotVelocityX = state.dashDirectionX * PlayerDashSpeed;
-                snapshotVelocityY = state.dashDirectionY * PlayerDashSpeed;
-                snapshotVelocityZ = 0.0f;
+                snapshotDirectionX = state.dashDirectionX;
+                snapshotDirectionY = state.dashDirectionY;
             }
 
             snapshot.players.push_back
@@ -460,9 +457,8 @@ namespace cna::server
                     state.positionX,
                     state.positionY,
                     state.positionZ,
-                    gameRunning ? snapshotVelocityX : 0.0f,
-                    gameRunning ? snapshotVelocityY : 0.0f,
-                    gameRunning ? snapshotVelocityZ : 0.0f
+                    gameRunning ? snapshotDirectionX : 0.0f,
+                    gameRunning ? snapshotDirectionY : 0.0f,
                 }
             );
         }
