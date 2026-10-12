@@ -67,9 +67,6 @@ namespace cna::server
         // Room 내부에서 사용할 새로운 플레이어 ID를 발급하는 함수
         std::optional<cna::PlayerId> GeneratePlayerId() noexcept;
 
-        // 현재 Room의 두 플레이어가 서로 충돌하고 있는지 반환하는 함수
-        static bool ArePlayersColliding(const PlayerState& firstPlayerState, const PlayerState& secondPlayerState) noexcept;
-
         // 플레이어의 위치를 스폰 위치로 이동시키는 함수
         static void ResetPlayerPosition(PlayerState& playerState) noexcept;
 
@@ -93,6 +90,12 @@ namespace cna::server
 
         // 플레이어 진영의 인덱스를 반환하는 함수
         static std::optional<std::size_t> GetPlayerSideIndex(cna::PlayerSide side) noexcept;
+
+        // 플레이어 반대 진영의 인덱스를 반환하는 함수
+        static std::optional<std::size_t> GetOppositePlayerSideIndex(cna::PlayerSide side) noexcept;
+
+        // Tick 내부 특정 시점의 공격 진영을 반환하는 함수
+        std::optional<std::size_t> GetAttackingSideIndexAtTickTime(float elapsedSeconds) const noexcept;
 
         // 서버에서 Room을 구분하기 위해 사용할 고유 ID
         cna::RoomId roomId_ = 0;

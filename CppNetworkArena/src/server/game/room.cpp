@@ -10,6 +10,7 @@
 #include <iostream>
 #include <iterator>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -43,6 +44,25 @@ namespace
 
     // 플레이어 간 충돌 판정에 사용할 원형 충돌 영역의 반지름
     constexpr float PlayerCollisionRadius = 0.15f;
+
+    // 등속 이동하는 플레이어의 초기 위치와 초당 속도를 저장할 구조체
+    struct PlayerMovement
+    {
+        float startX = 0.0f;
+        float startY = 0.0f;
+
+        float velocityX = 0.0f;
+        float velocityY = 0.0f;
+    };
+
+    // 한 Tick 내에서 감지된 플레이어 충돌 정보를 저장할 구조체
+    struct PlayerCollision
+    {
+        float timeInTick = 0.0f;
+
+        cna::server::PlayerState* firstPlayerState = nullptr;
+        cna::server::PlayerState* secondPlayerState = nullptr;
+    };
 
     // 서버에서의 플레이어 이동을 위해 계산된 값을 담을 구조체
     struct NormalizedPlayerInput
@@ -93,6 +113,157 @@ namespace
         }
 
         return normalizedInput;
+    }
+
+    // 한 Tick 내에서 두 플레이어의 Dash 경계를 수집하는 함수
+    std::vector<float> CollectPlayerMovementBoundaries(const cna::server::PlayerState& firstPlayerState, const cna::server::PlayerState& secondPlayerState, const float deltaSeconds)
+    {
+        std::vector<float> movementBoundaries;
+
+        // Tick 시작 시점
+        movementBoundaries.push_back(0.0f);
+
+        // 첫 번째 플레이어의 Dash가 현재 Tick 내부에서 종료되는 경우
+        if (firstPlayerState.dashRemainingSeconds > 0.0f && firstPlayerState.dashRemainingSeconds < deltaSeconds)
+        {
+            movementBoundaries.push_back(firstPlayerState.dashRemainingSeconds);
+        }
+
+        // 두 번째 플레이어의 Dash가 현재 Tick 내부에서 종료되는 경우
+        if (secondPlayerState.dashRemainingSeconds > 0.0f && secondPlayerState.dashRemainingSeconds < deltaSeconds)
+        {
+            movementBoundaries.push_back(secondPlayerState.dashRemainingSeconds);
+        }
+
+        // Tick 종료 시점
+        movementBoundaries.push_back(deltaSeconds);
+
+        // 시간 순서대로 정렬
+        std::sort(movementBoundaries.begin(), movementBoundaries.end());
+
+        // 두 플레이어의 Dash 종료 시점이 동일한 경우 중복 경계 제거
+        movementBoundaries.erase(std::unique(movementBoundaries.begin(), movementBoundaries.end()), movementBoundaries.end());
+
+        return movementBoundaries;
+    }
+
+    // 특정 시간 동안 두 플레이어가 충돌하는 가장 빠른 시각을 계산하는 함수
+    std::optional<float> FindPlayerCollisionTime(const PlayerMovement& firstPlayerMovement, const PlayerMovement& secondPlayerMovement, const float deltaSeconds) noexcept
+    {
+        // 시작 시점에서 첫 번째 플레이어에 대한 두 번째 플레이어의 상대 위치
+        const float relativeStartX = secondPlayerMovement.startX - firstPlayerMovement.startX;
+        const float relativeStartY = secondPlayerMovement.startY - firstPlayerMovement.startY;
+
+        // 첫 번째 플레이어에 대한 두 번째 플레이어의 상대 속도
+        const float relativeVelocityX = secondPlayerMovement.velocityX - firstPlayerMovement.velocityX;
+        const float relativeVelocityY = secondPlayerMovement.velocityY - firstPlayerMovement.velocityY;
+
+        // 두 플레이어 충돌 영역의 반지름 합
+        const float collisionDistance = PlayerCollisionRadius * 2.0f;
+
+        const float c = relativeStartX * relativeStartX + relativeStartY * relativeStartY - collisionDistance * collisionDistance;
+
+        // 시작 시점부터 이미 충돌 상태인 경우
+        if (c <= 0.0f)
+        {
+            return 0.0f;
+        }
+
+        const float a = relativeVelocityX * relativeVelocityX + relativeVelocityY * relativeVelocityY;
+
+        // 상대 이동이 거의 없는 경우
+        constexpr float kEpsilon = 1e-6f;
+        if (a < kEpsilon)
+        {
+            return std::nullopt;
+        }
+
+        const float b = 2.0f * (relativeStartX * relativeVelocityX + relativeStartY * relativeVelocityY);
+
+        // 상대 이동 선분과 충돌 원 사이의 교차 여부를 판단하기 위한 판별식
+        const float discriminant = b * b - 4.0f * a * c;
+
+        // 상대 이동 선분과 충돌 원이 교차하거나 접하지 않는 경우
+        if (discriminant < 0.0f)
+        {
+            return std::nullopt;
+        }
+
+        // 현재 이동 유지 시 가장 먼저 충돌 영역에 진입하는 시간 계산
+        const float collisionTime = (-b - std::sqrt(discriminant)) / (2.0f * a);
+
+        // 충돌 시점이 현재 이동 구간 외부에 있는 경우
+        if (collisionTime < 0.0f || collisionTime > deltaSeconds)
+        {
+            return std::nullopt;
+        }
+
+        // 시작 시점부터 실제 충돌까지 경과한 시간 반환
+        return collisionTime;
+    }
+
+    std::optional<float> FindPlayerCollisionTimeDuringTick(const cna::server::PlayerState& firstPlayerState, const cna::server::PlayerState& secondPlayerState, const float deltaSeconds)
+    {
+        // 한 Tick 내의 두 플레이어의 Dash 경계 수집
+        std::vector<float> movementBoundaries = CollectPlayerMovementBoundaries(firstPlayerState, secondPlayerState, deltaSeconds);
+
+        // Tick 시작 시점에서의 첫 번째 플레이어 위치
+        float firstStartX = firstPlayerState.positionX;
+        float firstStartY = firstPlayerState.positionY;
+
+        // Tick 시작 시점에서의 두 번째 플레이어 위치
+        float secondStartX = secondPlayerState.positionX;
+        float secondStartY = secondPlayerState.positionY;
+
+        // Dash 경계로 구분한 모든 구간 순회
+        for (std::size_t i = 0; i + 1 < movementBoundaries.size(); ++i)
+        {
+            const float segmentStartTime = movementBoundaries[i];
+            const float segmentEndTime = movementBoundaries[i + 1];
+
+            const float segmentDeltaSeconds = segmentEndTime - segmentStartTime;
+
+            // 현재 구간에서 각 플레이어가 Dash 상태인지 판단
+            const bool firstPlayerDashing = firstPlayerState.dashRemainingSeconds > segmentStartTime;
+            const bool secondPlayerDashing = secondPlayerState.dashRemainingSeconds > segmentStartTime;
+
+            const float firstVelocityX = firstPlayerDashing
+                ? firstPlayerState.dashDirectionX * PlayerDashSpeed
+                : firstPlayerState.directionX * PlayerMoveSpeed;
+
+            const float firstVelocityY = firstPlayerDashing
+                ? firstPlayerState.dashDirectionY * PlayerDashSpeed
+                : firstPlayerState.directionY * PlayerMoveSpeed;
+
+            const float secondVelocityX = secondPlayerDashing
+                ? secondPlayerState.dashDirectionX * PlayerDashSpeed
+                : secondPlayerState.directionX * PlayerMoveSpeed;
+
+            const float secondVelocityY = secondPlayerDashing
+                ? secondPlayerState.dashDirectionY * PlayerDashSpeed
+                : secondPlayerState.directionY * PlayerMoveSpeed;
+
+            const PlayerMovement firstMovement{ firstStartX, firstStartY, firstVelocityX, firstVelocityY };
+            const PlayerMovement secondMovement{ secondStartX, secondStartY, secondVelocityX, secondVelocityY };
+
+            // 현재 구간에서의 플레이어 간 충돌 검사
+            const std::optional<float> collisionTime = FindPlayerCollisionTime(firstMovement, secondMovement, segmentDeltaSeconds);
+
+            // 충돌이 감지된 경우 Tick 시작 시점에서 충돌까지 걸리는 시간 반환
+            if (collisionTime)
+            {
+                return segmentStartTime + *collisionTime;
+            }
+
+            // 충돌하지 않은 경우 다음 구간에서의 플레이어 시작 위치 계산
+            firstStartX += firstVelocityX * segmentDeltaSeconds;
+            firstStartY += firstVelocityY * segmentDeltaSeconds;
+
+            secondStartX += secondVelocityX * segmentDeltaSeconds;
+            secondStartY += secondVelocityY * segmentDeltaSeconds;
+        }
+
+        return std::nullopt;
     }
 }
 
@@ -312,113 +483,142 @@ namespace cna::server
             return;
         }
 
-        // 게임이 진행 중인 경우
-        if (attackingSide_ != cna::PlayerSide::None)
+        // 게임이 중지 상태인 경우 플레이어 이동 및 충돌 검사 생략
+        if (attackingSide_ == cna::PlayerSide::None)
         {
-            // Room에 등록된 모든 플레이어의 위치를 현재 플레이어 이동 상태를 기준으로 갱신
-            for (auto& playerEntry : players_)
-            {
-                Player& player = playerEntry.second;
-                PlayerState& state = player.GetState();
-
-                // 현재 Tick 내에서 플레이어가 이동 가능한 시간
-                float remainingMovementSeconds = deltaSeconds;
-
-                // Dash 지속시간이 남아 있는 경우 Dash 방향으로 우선 이동
-                if (state.dashRemainingSeconds > 0.0f)
-                {
-                    // 현재 Tick 내에서 Dash가 적용되는 sub-Tick 시간
-                    const float dashDeltaSeconds = std::min(deltaSeconds, state.dashRemainingSeconds);
-
-                    // Dash 적용 시간만큼 Dash 이동
-                    state.positionX += state.dashDirectionX * PlayerDashSpeed * dashDeltaSeconds;
-                    state.positionY += state.dashDirectionY * PlayerDashSpeed * dashDeltaSeconds;
-
-                    // 사용한 Dash 지속시간 차감
-                    state.dashRemainingSeconds = std::max(0.0f, state.dashRemainingSeconds - dashDeltaSeconds);
-
-                    // 플레이어 이동 가능 시간에서 이동에 사용한 Dash 지속시간 차감  
-                    remainingMovementSeconds -= dashDeltaSeconds;
-                }
-
-                // 현재 Tick에서 Dash 이동 종료 후 남은 시간이 있는 경우 일반 이동
-                if (remainingMovementSeconds > 0.0f)
-                {
-                    state.positionX += state.directionX * PlayerMoveSpeed * remainingMovementSeconds;
-                    state.positionY += state.directionY * PlayerMoveSpeed * remainingMovementSeconds;
-                }
-
-                // Dash 쿨다운 감소
-                state.dashCooldownRemainingSeconds = std::max(0.0f, state.dashCooldownRemainingSeconds - deltaSeconds);
-
-                // 플레이어 메쉬가 아레나 경계를 넘어가지 않도록 위치 제한
-                state.positionX =
-                    std::clamp
-                    (
-                        state.positionX,
-                        ArenaMinX + PlayerBoundaryMargin,
-                        ArenaMaxX - PlayerBoundaryMargin
-                    );
-
-                state.positionY =
-                    std::clamp
-                    (
-                        state.positionY,
-                        ArenaMinY + PlayerBoundaryMargin,
-                        ArenaMaxY - PlayerBoundaryMargin
-                    );
-
-                // 현재 게임은 XY 플레이 평면만 사용하므로 Z축 위치 고정
-                state.positionZ = 0.0f;
-            }
-
-            // Room에 등록된 플레이어의 모든 조합에 대해 충돌 검사
-            for (auto firstPlayerIterator = players_.begin(); firstPlayerIterator != players_.end(); ++firstPlayerIterator)
-            {
-                for (auto secondPlayerIterator = std::next(firstPlayerIterator); secondPlayerIterator != players_.end(); ++secondPlayerIterator)
-                {
-                    PlayerState& firstPlayerState = firstPlayerIterator->second.GetState();
-                    PlayerState& secondPlayerState = secondPlayerIterator->second.GetState();
-
-                    // 두 플레이어가 충돌하지 않은 경우 다음 조합 검사
-                    if (!ArePlayersColliding(firstPlayerState, secondPlayerState))
-                    {
-                        continue;
-                    }
-
-                    // 현재 공격 역할이 할당된 진영의 인덱스
-                    const std::optional<std::size_t> attackingSideIndex = GetPlayerSideIndex(attackingSide_);
-
-                    if (attackingSideIndex)
-                    {
-                        // 현재 공격 역할이 할당된 진영에 득점 처리
-                        ++sideScores_[*attackingSideIndex];
-
-                        std::cout
-                            << "[Room] Score updated"
-                            << ": roomId=" << roomId_
-                            << ", flameScore=" << sideScores_[FlameSideIndex]
-                            << ", frostScore=" << sideScores_[FrostSideIndex]
-                            << '\n';
-                    }
-
-                    // 충돌한 플레이어의 Dash 종료
-                    firstPlayerState.dashDirectionX = 0.0f;
-                    firstPlayerState.dashDirectionY = 0.0f;
-                    firstPlayerState.dashRemainingSeconds = 0.0f;
-
-                    secondPlayerState.dashDirectionX = 0.0f;
-                    secondPlayerState.dashDirectionY = 0.0f;
-                    secondPlayerState.dashRemainingSeconds = 0.0f;
-
-                    // 충돌한 두 플레이어를 각자의 시작 위치로 재배치
-                    ResetPlayerPosition(firstPlayerState);
-                    ResetPlayerPosition(secondPlayerState);
-                }
-            }
-
-            UpdateAttackDefenseState(deltaSeconds);
+            return;
         }
+
+        // 현재 Tick에서 수집된 플레이어 충돌 목록
+        std::vector<PlayerCollision> playerCollisions;
+
+        // Room에 등록된 플레이어의 모든 조합에 대해 충돌 검사
+        for (auto firstPlayerIterator = players_.begin(); firstPlayerIterator != players_.end(); ++firstPlayerIterator)
+        {
+            for (auto secondPlayerIterator = std::next(firstPlayerIterator); secondPlayerIterator != players_.end(); ++secondPlayerIterator)
+            {
+                PlayerState& firstPlayerState = firstPlayerIterator->second.GetState();
+                PlayerState& secondPlayerState = secondPlayerIterator->second.GetState();
+
+                // 플레이어 충돌 검사
+                const std::optional<float> currentCollisionTime =
+                    FindPlayerCollisionTimeDuringTick
+                    (
+                        firstPlayerState,
+                        secondPlayerState,
+                        deltaSeconds
+                    );
+
+                // 두 플레이어가 충돌하지 않은 경우 다음 조합 검사
+                if (!currentCollisionTime)
+                {
+                    continue;
+                }
+
+                playerCollisions.push_back
+                (
+                    PlayerCollision
+                    {
+                        *currentCollisionTime,
+                        &firstPlayerState,
+                        &secondPlayerState
+                    }
+                );
+            }
+        }
+
+        // Room에 등록된 모든 플레이어의 위치를 현재 플레이어 이동 상태를 기준으로 갱신
+        for (auto& playerEntry : players_)
+        {
+            Player& player = playerEntry.second;
+            PlayerState& state = player.GetState();
+
+            // 현재 Tick 내에서 플레이어가 이동 가능한 시간
+            float remainingMovementSeconds = deltaSeconds;
+
+            // Dash 지속시간이 남아 있는 경우 Dash 방향으로 우선 이동
+            if (state.dashRemainingSeconds > 0.0f)
+            {
+                // 현재 Tick 내에서 Dash가 적용되는 sub-Tick 시간
+                const float dashDeltaSeconds = std::min(deltaSeconds, state.dashRemainingSeconds);
+
+                // Dash 적용 시간만큼 Dash 이동
+                state.positionX += state.dashDirectionX * PlayerDashSpeed * dashDeltaSeconds;
+                state.positionY += state.dashDirectionY * PlayerDashSpeed * dashDeltaSeconds;
+
+                // 사용한 Dash 지속시간 차감
+                state.dashRemainingSeconds = std::max(0.0f, state.dashRemainingSeconds - dashDeltaSeconds);
+
+                // 플레이어 이동 가능 시간에서 이동에 사용한 Dash 지속시간 차감  
+                remainingMovementSeconds -= dashDeltaSeconds;
+            }
+
+            // 현재 Tick에서 Dash 이동 종료 후 남은 시간이 있는 경우 일반 이동
+            if (remainingMovementSeconds > 0.0f)
+            {
+                state.positionX += state.directionX * PlayerMoveSpeed * remainingMovementSeconds;
+                state.positionY += state.directionY * PlayerMoveSpeed * remainingMovementSeconds;
+            }
+
+            // Dash 쿨다운 감소
+            state.dashCooldownRemainingSeconds = std::max(0.0f, state.dashCooldownRemainingSeconds - deltaSeconds);
+
+            // 플레이어 메쉬가 아레나 경계를 넘어가지 않도록 위치 제한
+            state.positionX =
+                std::clamp
+                (
+                    state.positionX,
+                    ArenaMinX + PlayerBoundaryMargin,
+                    ArenaMaxX - PlayerBoundaryMargin
+                );
+
+            state.positionY =
+                std::clamp
+                (
+                    state.positionY,
+                    ArenaMinY + PlayerBoundaryMargin,
+                    ArenaMaxY - PlayerBoundaryMargin
+                );
+
+            // 현재 게임은 XY 플레이 평면만 사용하므로 Z축 위치 고정
+            state.positionZ = 0.0f;
+        }
+
+        // 현재 Tick 내의 충돌 기록 순회
+        for (auto& playerCollision : playerCollisions)
+        {
+            // 충돌 시점의 공격 진영 인덱스
+            std::optional<std::size_t> attackingSideIndexAtCollision = GetAttackingSideIndexAtTickTime(playerCollision.timeInTick);
+
+            // 충돌 시점의 공격 진영에 득점 처리
+            if (attackingSideIndexAtCollision)
+            {
+                ++sideScores_[*attackingSideIndexAtCollision];
+
+                std::cout
+                    << "[Room] Score updated"
+                    << ": roomId=" << roomId_
+                    << ", flameScore=" << sideScores_[FlameSideIndex]
+                    << ", frostScore=" << sideScores_[FrostSideIndex]
+                    << '\n';
+            }
+
+            // 충돌한 플레이어의 Dash 종료
+            playerCollision.firstPlayerState->dashDirectionX = 0.0f;
+            playerCollision.firstPlayerState->dashDirectionY = 0.0f;
+            playerCollision.firstPlayerState->dashRemainingSeconds = 0.0f;
+
+            playerCollision.secondPlayerState->dashDirectionX = 0.0f;
+            playerCollision.secondPlayerState->dashDirectionY = 0.0f;
+            playerCollision.secondPlayerState->dashRemainingSeconds = 0.0f;
+
+            // 충돌한 두 플레이어를 각자의 시작 위치로 재배치
+            ResetPlayerPosition(*playerCollision.firstPlayerState);
+            ResetPlayerPosition(*playerCollision.secondPlayerState);
+        }
+
+        // 공수 진영 갱신
+        UpdateAttackDefenseState(deltaSeconds);
     }
 
     cna::network::WorldStateSnapshot Room::CaptureSnapshot(cna::ServerTick serverTick) const
@@ -555,19 +755,6 @@ namespace cna::server
         }
 
         return playerId;
-    }
-
-    bool Room::ArePlayersColliding(const PlayerState& firstPlayerState, const PlayerState& secondPlayerState) noexcept
-    {
-        // XY 플레이 평면에서 두 플레이어 중심 사이의 거리 벡터 계산
-        const float deltaX = secondPlayerState.positionX - firstPlayerState.positionX;
-        const float deltaY = secondPlayerState.positionY - firstPlayerState.positionY;
-
-        // 플레이어 사이 거리 제곱 계산
-        const float distanceSquared = deltaX * deltaX + deltaY * deltaY;
-
-        // 두 플레이어의 원형 충돌 영역이 닿거나 겹친 경우 충돌로 판정
-        return distanceSquared <= PlayerCollisionRadius * PlayerCollisionRadius * 4.0f;
     }
 
     void Room::ResetPlayerPosition(PlayerState& playerState) noexcept
@@ -708,5 +895,37 @@ namespace cna::server
         }
 
         return std::nullopt;
+    }
+
+    std::optional<std::size_t> Room::GetOppositePlayerSideIndex(cna::PlayerSide side) noexcept
+    {
+        // Flame 진영인 경우
+        if (side == cna::PlayerSide::Flame)
+        {
+            return FrostSideIndex;
+        }
+
+        // Frost 진영인 경우
+        if (side == cna::PlayerSide::Frost)
+        {
+            return FlameSideIndex;
+        }
+
+        return std::nullopt;
+    }
+
+    std::optional<std::size_t> Room::GetAttackingSideIndexAtTickTime(float elapsedSeconds) const noexcept
+    {
+        // 타겟 시점이 역할 교체 이전인 경우
+        if (elapsedSeconds < attackRoleSwitchRemainingSeconds_)
+        {
+            return GetPlayerSideIndex(attackingSide_);
+        }
+
+        // 타겟 시점이 역할 교체 이후인 경우
+        else
+        {
+            return GetOppositePlayerSideIndex(attackingSide_);
+        }
     }
 }
