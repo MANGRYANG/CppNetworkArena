@@ -61,6 +61,14 @@ namespace cna::server
         bool HasCapacity() const noexcept;
 
     private:
+        // 게임 진행 상태를 나타내기 위한 구조체
+        enum class GamePlayState
+        {
+            Waiting,    // 플레이어 대기 상태
+            Playing,    // 게임 진행 상태
+            Finished    // 게임 종료 상태
+        };
+
         // 하나의 Room에 입장할 수 있는 최대 플레이어 수
         static constexpr std::size_t MaxPlayerCount = 2;
 
@@ -105,6 +113,9 @@ namespace cna::server
 
         // 다음 플레이어에게 발급할 Room 내부 플레이어 ID
         cna::PlayerId nextPlayerId_ = 1;
+
+        // 현재 게임 진행 상태
+        GamePlayState gameState_ = GamePlayState::Waiting;
 
         // 현재 공격 역할을 가진 플레이어 진영
         cna::PlayerSide attackingSide_ = cna::PlayerSide::None;

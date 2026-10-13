@@ -371,8 +371,8 @@ namespace cna::server
         // 할당된 진영에 해당하는 시작 위치 적용
         ResetPlayerPosition(playerState);
 
-        // 게임을 진행할 수 있는 진영 구성이 갖춰져 있고 게임이 중지된 상태인 경우 게임 시작
-        if (attackingSide_ == cna::PlayerSide::None && IsAttackDefenseReady())
+        // 게임 대기 상태에서 게임을 진행할 수 있는 진영 구성이 갖춰진 경우 게임 시작
+        if (gameState_ == GamePlayState::Waiting && IsAttackDefenseReady())
         {
             StartGame();
         }
@@ -443,8 +443,8 @@ namespace cna::server
         // 현재 Dash 입력 상태 저장
         state.dashInputActive = input.dash;
 
-        // 게임이 중지 상태인 경우 Dash를 시작하지 않음
-        if (attackingSide_ == cna::PlayerSide::None)
+        // 게임 진행 상태가 아닌 경우 Dash를 시작하지 않음
+        if (gameState_ != GamePlayState::Playing)
         {
             return true;
         }
@@ -486,8 +486,8 @@ namespace cna::server
             return;
         }
 
-        // 게임이 중지 상태인 경우 플레이어 이동 및 충돌 검사 생략
-        if (attackingSide_ == cna::PlayerSide::None)
+        // 게임 진행 상태가 아닌 경우 플레이어 이동 및 충돌 검사 생략
+        if (gameState_ != GamePlayState::Playing)
         {
             return;
         }
@@ -646,7 +646,7 @@ namespace cna::server
         snapshot.players.reserve(players_.size());
 
         // 현재 게임 진행 여부
-        const bool gameRunning = attackingSide_ != cna::PlayerSide::None;
+        const bool gameRunning = gameState_ == GamePlayState::Playing;
 
         // Room에 등록된 모든 플레이어의 현재 상태를 스냅샷에 추가
         for (const auto& playerEntry : players_)
@@ -676,7 +676,7 @@ namespace cna::server
                     gameRunning ? snapshotDirectionX : 0.0f,
                     gameRunning ? snapshotDirectionY : 0.0f,
                 }
-            );
+                );
         }
 
         // unordered_map 순회 순서와 무관하게 플레이어 ID 기준으로 정렬
@@ -823,6 +823,9 @@ namespace cna::server
 
     void Room::StartGame() noexcept
     {
+        // 게임 진행 상태 설정
+        gameState_ = GamePlayState::Playing;
+
         // 득점 배열 초기화
         sideScores_ = {};
 
@@ -861,6 +864,9 @@ namespace cna::server
 
     void Room::StopGame() noexcept
     {
+        // 게임 대기 상태 설정
+        gameState_ = GamePlayState::Waiting;
+
         // 현재 공격 진영 제거
         attackingSide_ = cna::PlayerSide::None;
 
@@ -896,6 +902,9 @@ namespace cna::server
         {
             winningSide_ = cna::PlayerSide::None;
         }
+
+        // 게임 종료 상태 설정
+        gameState_ = GamePlayState::Finished;
 
         // 게임 종료 후 공격 진영 제거
         attackingSide_ = cna::PlayerSide::None;
