@@ -29,6 +29,9 @@ namespace
     // 공격 진영과 수비 진영이 교체되는 시간 간격
     constexpr float AttackRoleSwitchIntervalSeconds = 3.0f;
 
+    // 게임이 진행되는 전체 시간
+    constexpr float GameDurationSeconds = 30.0f;
+
     // 진영별 점수 배열에서 사용하는 인덱스
     constexpr std::size_t FlameSideIndex = 0;
     constexpr std::size_t FrostSideIndex = 1;
@@ -489,6 +492,9 @@ namespace cna::server
             return;
         }
 
+        // 현재 Tick에서 실제 게임 진행에 사용할 시간
+        const float simulationDeltaSeconds = std::min(deltaSeconds, gameRemainingSeconds_);
+
         // 현재 Tick에서 수집된 플레이어 충돌 목록
         std::vector<PlayerCollision> playerCollisions;
 
@@ -506,7 +512,7 @@ namespace cna::server
                     (
                         firstPlayerState,
                         secondPlayerState,
-                        deltaSeconds
+                        simulationDeltaSeconds
                     );
 
                 // 두 플레이어가 충돌하지 않은 경우 다음 조합 검사
@@ -534,13 +540,13 @@ namespace cna::server
             PlayerState& state = player.GetState();
 
             // 현재 Tick 내에서 플레이어가 이동 가능한 시간
-            float remainingMovementSeconds = deltaSeconds;
+            float remainingMovementSeconds = simulationDeltaSeconds;
 
             // Dash 지속시간이 남아 있는 경우 Dash 방향으로 우선 이동
             if (state.dashRemainingSeconds > 0.0f)
             {
                 // 현재 Tick 내에서 Dash가 적용되는 sub-Tick 시간
-                const float dashDeltaSeconds = std::min(deltaSeconds, state.dashRemainingSeconds);
+                const float dashDeltaSeconds = std::min(simulationDeltaSeconds, state.dashRemainingSeconds);
 
                 // Dash 적용 시간만큼 Dash 이동
                 state.positionX += state.dashDirectionX * PlayerDashSpeed * dashDeltaSeconds;
@@ -561,7 +567,7 @@ namespace cna::server
             }
 
             // Dash 쿨다운 감소
-            state.dashCooldownRemainingSeconds = std::max(0.0f, state.dashCooldownRemainingSeconds - deltaSeconds);
+            state.dashCooldownRemainingSeconds = std::max(0.0f, state.dashCooldownRemainingSeconds - simulationDeltaSeconds);
 
             // 플레이어 메쉬가 아레나 경계를 넘어가지 않도록 위치 제한
             state.positionX =
@@ -617,8 +623,18 @@ namespace cna::server
             ResetPlayerPosition(*playerCollision.secondPlayerState);
         }
 
+        // 게임 종료까지 남은 시간 감소
+        gameRemainingSeconds_ = std::max(0.0f, gameRemainingSeconds_ - simulationDeltaSeconds);
+
+        // 전체 게임 시간이 만료된 경우 게임 종료
+        if (gameRemainingSeconds_ <= 0.0f)
+        {
+            FinishGame();
+            return;
+        }
+
         // 공수 진영 갱신
-        UpdateAttackDefenseState(deltaSeconds);
+        UpdateAttackDefenseState(simulationDeltaSeconds);
     }
 
     cna::network::WorldStateSnapshot Room::CaptureSnapshot(cna::ServerTick serverTick) const
@@ -810,21 +826,36 @@ namespace cna::server
         // 득점 배열 초기화
         sideScores_ = {};
 
+        // 이전 게임의 결과 초기화
+        winningSide_ = cna::PlayerSide::None;
+
+        // 전체 게임 시간 설정
+        gameRemainingSeconds_ = GameDurationSeconds;
+
         // 최초 공격 진영은 Flame으로 지정
         attackingSide_ = cna::PlayerSide::Flame;
 
         // 최초 공격 진영의 유지 시간 설정
         attackRoleSwitchRemainingSeconds_ = AttackRoleSwitchIntervalSeconds;
 
-        // 플레이어별 Dash 상태 초기화
+        // 플레이어별 게임 시작 상태 초기화
         for (auto& playerEntry : players_)
         {
             PlayerState& state = playerEntry.second.GetState();
 
+            // 플레이어를 각 진영의 시작 위치로 이동
+            ResetPlayerPosition(state);
+
+            // 플레이어 이동 상태 초기화
+            state.directionX = 0.0f;
+            state.directionY = 0.0f;
+
+            // Dash 상태 초기화
             state.dashDirectionX = 0.0f;
             state.dashDirectionY = 0.0f;
             state.dashRemainingSeconds = 0.0f;
             state.dashCooldownRemainingSeconds = 0.0f;
+            state.dashInputActive = false;
         }
     }
 
@@ -835,6 +866,74 @@ namespace cna::server
 
         // 공격 진영 교대 타이머 초기화
         attackRoleSwitchRemainingSeconds_ = 0.0f;
+
+        // 전체 게임 타이머 초기화
+        gameRemainingSeconds_ = 0.0f;
+
+        // 중단된 게임의 결과 제거
+        winningSide_ = cna::PlayerSide::None;
+
+        // 중단된 게임의 점수 초기화
+        sideScores_ = {};
+    }
+
+    void Room::FinishGame() noexcept
+    {
+        // Flame 진영의 점수가 더 높은 경우 Flame 승리
+        if (sideScores_[FlameSideIndex] > sideScores_[FrostSideIndex])
+        {
+            winningSide_ = cna::PlayerSide::Flame;
+        }
+
+        // Frost 진영의 점수가 더 높은 경우 Frost 승리
+        else if (sideScores_[FrostSideIndex] > sideScores_[FlameSideIndex])
+        {
+            winningSide_ = cna::PlayerSide::Frost;
+        }
+
+        // 두 진영의 점수가 동일한 경우 무승부
+        else
+        {
+            winningSide_ = cna::PlayerSide::None;
+        }
+
+        // 게임 종료 후 공격 진영 제거
+        attackingSide_ = cna::PlayerSide::None;
+
+        // 공격 진영 교대 타이머 종료
+        attackRoleSwitchRemainingSeconds_ = 0.0f;
+
+        // 전체 게임 타이머 종료
+        gameRemainingSeconds_ = 0.0f;
+
+        // 진행 중인 Dash 종료
+        for (auto& playerEntry : players_)
+        {
+            PlayerState& state = playerEntry.second.GetState();
+
+            state.dashDirectionX = 0.0f;
+            state.dashDirectionY = 0.0f;
+            state.dashRemainingSeconds = 0.0f;
+        }
+
+        std::cout
+            << "[Room] Game ended"
+            << ": roomId=" << roomId_
+            << ", flameScore=" << sideScores_[FlameSideIndex]
+            << ", frostScore=" << sideScores_[FrostSideIndex];
+
+        if (winningSide_ == cna::PlayerSide::Flame)
+        {
+            std::cout << ", winner=Flame" << '\n';
+        }
+        else if (winningSide_ == cna::PlayerSide::Frost)
+        {
+            std::cout << ", winner=Frost" << '\n';
+        }
+        else
+        {
+            std::cout << ", winner=Draw" << '\n';
+        }
     }
 
     void Room::UpdateAttackDefenseState(float deltaSeconds) noexcept

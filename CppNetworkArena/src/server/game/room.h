@@ -82,6 +82,9 @@ namespace cna::server
         // 게임을 중지하는 함수
         void StopGame() noexcept;
 
+        // 현재 게임을 정상 종료하고 최종 결과를 결정하는 함수
+        void FinishGame() noexcept;
+
         // 경과 시간을 기준으로 공격/수비 상태를 갱신하는 함수
         void UpdateAttackDefenseState(float deltaSeconds) noexcept;
 
@@ -108,6 +111,12 @@ namespace cna::server
 
         // 다음 공격 진영 교대까지 남은 시간
         float attackRoleSwitchRemainingSeconds_ = 0.0f;
+
+        // 게임 종료까지 남은 시간
+        float gameRemainingSeconds_ = 0.0f;
+
+        // 종료된 게임의 승리 진영
+        cna::PlayerSide winningSide_ = cna::PlayerSide::None;
 
         // 각 진영별 현재 점수를 보관하기 위한 배열
         std::array<std::size_t, 2> sideScores_{};
