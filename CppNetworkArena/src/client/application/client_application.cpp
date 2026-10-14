@@ -528,10 +528,10 @@ namespace cna::client
                 playerState.positionZ
             };
 
-            // 플레이어가 이동 중인 경우 서버 속도를 기준으로 이동 방향을 계산하여 렌더 방향 설정
-            if (playerState.velocityX != 0.0f || playerState.velocityY != 0.0f)
+            // 플레이어가 이동 중인 경우 서버 방향을 기준으로 플레이어 렌더 방향 설정
+            if (playerState.directionX != 0.0f || playerState.directionY != 0.0f)
             {
-                synchronizedPlayerRenderEntry.renderObject.transform.rotationRadians.z = std::atan2(playerState.velocityX, -playerState.velocityY);
+                synchronizedPlayerRenderEntry.renderObject.transform.rotationRadians.z = std::atan2(playerState.directionX, -playerState.directionY);
             }
         }
 
@@ -640,8 +640,8 @@ namespace cna::client
             };
 
             // 전후 스냅샷의 이동 상태 확인
-            const bool previousPlayerMoving = previousPlayerState->velocityX != 0.0f || previousPlayerState->velocityY != 0.0f;
-            const bool nextPlayerMoving = nextPlayerState->velocityX != 0.0f || nextPlayerState->velocityY != 0.0f;
+            const bool previousPlayerMoving = previousPlayerState->directionX != 0.0f || previousPlayerState->directionY != 0.0f;
+            const bool nextPlayerMoving = nextPlayerState->directionX != 0.0f || nextPlayerState->directionY != 0.0f;
 
             // 두 스냅샷 모두 정지 상태인 경우 기존 렌더 방향 유지
             if (!previousPlayerMoving && !nextPlayerMoving)
@@ -649,9 +649,9 @@ namespace cna::client
                 continue;
             }
 
-            // 전후 스냅샷에서의 플레이어 속도를 기반으로 Z축 기준 회전각 계산
-            const float previousFacingAngleRadians = std::atan2(previousPlayerState->velocityX, -previousPlayerState->velocityY);
-            const float nextFacingAngleRadians = std::atan2(nextPlayerState->velocityX, -nextPlayerState->velocityY);
+            // 전후 스냅샷에서의 플레이어 이동 방향을 기반으로 Z축 기준 회전각 계산
+            const float previousFacingAngleRadians = std::atan2(previousPlayerState->directionX, -previousPlayerState->directionY);
+            const float nextFacingAngleRadians = std::atan2(nextPlayerState->directionX, -nextPlayerState->directionY);
 
             // 이전 스냅샷에서 정지 상태였던 경우 새 이동 방향을 바로 적용
             if (!previousPlayerMoving)
@@ -1113,6 +1113,12 @@ namespace cna::client
             input.moveX += cna::network::MaxPlayerInputAxisRawValue;
         }
 
+        // Space 키가 눌린 경우 Dash 입력 적용
+        if ((GetAsyncKeyState(VK_SPACE) & 0x8000) != 0)
+        {
+            input.dash = true;
+        }
+
         return input;
     }
 
@@ -1136,7 +1142,8 @@ namespace cna::client
         // 현재 입력이 마지막으로 서버에 전송한 입력과 동일한 경우 추가로 전송하지 않음
         if (currentPlayerInput_.moveX == lastSentPlayerInput_.moveX &&
             currentPlayerInput_.moveY == lastSentPlayerInput_.moveY &&
-            currentPlayerInput_.moveZ == lastSentPlayerInput_.moveZ
+            currentPlayerInput_.moveZ == lastSentPlayerInput_.moveZ &&
+            currentPlayerInput_.dash == lastSentPlayerInput_.dash
         )
         {
             return;

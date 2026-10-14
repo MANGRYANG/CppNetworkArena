@@ -8,6 +8,7 @@
 #include <network/messages/core/message_type.h>
 #include <network/messages/payloads/world_state_snapshot_message.h>
 
+#include <array>
 #include <cstddef>
 #include <memory>
 #include <span>
@@ -66,11 +67,62 @@ namespace cna::server
         // Room 내부에서 사용할 새로운 플레이어 ID를 발급하는 함수
         std::optional<cna::PlayerId> GeneratePlayerId() noexcept;
 
+        // 플레이어의 위치를 스폰 위치로 이동시키는 함수
+        static void ResetPlayerPosition(PlayerState& playerState) noexcept;
+
+        // 특정 진영에 속한 플레이어가 현재 Room에 존재하는지 반환하는 함수
+        bool HasPlayerOnSide(cna::PlayerSide side) const noexcept;
+
+        // 게임을 진행할 수 있는 진영 구성이 갖춰졌는지 반환하는 함수
+        bool IsAttackDefenseReady() const noexcept;
+
+        // 게임을 시작하는 함수
+        void StartGame() noexcept;
+
+        // 게임을 중지하는 함수
+        void StopGame() noexcept;
+
+        // 현재 게임을 정상 종료하고 최종 결과를 결정하는 함수
+        void FinishGame() noexcept;
+
+        // 경과 시간을 기준으로 공격/수비 상태를 갱신하는 함수
+        void UpdateAttackDefenseState(float deltaSeconds) noexcept;
+
+        // 현재 공격 진영을 반대 진영으로 교체하는 함수
+        void SwitchAttackingSide() noexcept;
+
+        // 플레이어 진영의 인덱스를 반환하는 함수
+        static std::optional<std::size_t> GetPlayerSideIndex(cna::PlayerSide side) noexcept;
+
+        // 플레이어 반대 진영의 인덱스를 반환하는 함수
+        static std::optional<std::size_t> GetOppositePlayerSideIndex(cna::PlayerSide side) noexcept;
+
+        // Tick 내부 특정 시점의 공격 진영을 반환하는 함수
+        std::optional<std::size_t> GetAttackingSideIndexAtTickTime(float elapsedSeconds) const noexcept;
+
         // 서버에서 Room을 구분하기 위해 사용할 고유 ID
         cna::RoomId roomId_ = 0;
 
         // 다음 플레이어에게 발급할 Room 내부 플레이어 ID
         cna::PlayerId nextPlayerId_ = 1;
+
+        // 현재 게임 진행 상태
+        GamePlayState gameState_ = cna::GamePlayState::Waiting;
+
+        // 현재 공격 역할을 가진 플레이어 진영
+        cna::PlayerSide attackingSide_ = cna::PlayerSide::None;
+
+        // 다음 공격 진영 교대까지 남은 시간
+        float attackRoleSwitchRemainingSeconds_ = 0.0f;
+
+        // 게임 종료까지 남은 시간
+        float gameRemainingSeconds_ = 0.0f;
+
+        // 종료된 게임의 승리 진영
+        cna::PlayerSide winningSide_ = cna::PlayerSide::None;
+
+        // 각 진영별 현재 점수를 보관하기 위한 배열
+        std::array<std::size_t, 2> sideScores_{};
 
         // Room에 입장한 플레이어를 관리하기 위한 컨테이너
         std::unordered_map<SessionId, Player> players_;

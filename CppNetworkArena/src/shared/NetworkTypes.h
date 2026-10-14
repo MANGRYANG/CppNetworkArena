@@ -20,4 +20,12 @@ namespace cna
         Flame,
         Frost
     };
+
+    // 현재 게임 진행 상태를 구분하는 열거형
+    enum class GamePlayState : std::uint8_t
+    {
+        Waiting = 0,
+        Playing,
+        Finished
+    };
 }
