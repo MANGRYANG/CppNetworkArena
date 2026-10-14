@@ -372,7 +372,7 @@ namespace cna::server
         ResetPlayerPosition(playerState);
 
         // 게임 대기 상태에서 게임을 진행할 수 있는 진영 구성이 갖춰진 경우 게임 시작
-        if (gameState_ == GamePlayState::Waiting && IsAttackDefenseReady())
+        if (gameState_ == cna::GamePlayState::Waiting && IsAttackDefenseReady())
         {
             StartGame();
         }
@@ -444,7 +444,7 @@ namespace cna::server
         state.dashInputActive = input.dash;
 
         // 게임 진행 상태가 아닌 경우 Dash를 시작하지 않음
-        if (gameState_ != GamePlayState::Playing)
+        if (gameState_ != cna::GamePlayState::Playing)
         {
             return true;
         }
@@ -487,7 +487,7 @@ namespace cna::server
         }
 
         // 게임 진행 상태가 아닌 경우 플레이어 이동 및 충돌 검사 생략
-        if (gameState_ != GamePlayState::Playing)
+        if (gameState_ != cna::GamePlayState::Playing)
         {
             return;
         }
@@ -645,8 +645,29 @@ namespace cna::server
         snapshot.roomId = roomId_;
         snapshot.players.reserve(players_.size());
 
+        // 현재 게임 진행 상태 적용
+        snapshot.gameState = gameState_;
+
+        // 현재 공격 진영 적용
+        snapshot.attackingSide = attackingSide_;
+
+        // 종료된 게임의 승리 진영 적용
+        snapshot.winningSide = winningSide_;
+
+        // 현재 게임 타이머 적용
+        snapshot.gameRemainingSeconds = gameRemainingSeconds_;
+
+        // 현재 공격 진영 교대 타이머 적용
+        snapshot.attackRoleSwitchRemainingSeconds = attackRoleSwitchRemainingSeconds_;
+
+        // 현재 진영별 점수 적용
+        snapshot.flameScore = static_cast<std::uint32_t>(sideScores_[FlameSideIndex]);
+        snapshot.frostScore = static_cast<std::uint32_t>(sideScores_[FrostSideIndex]);
+
+        snapshot.players.reserve(players_.size());
+
         // 현재 게임 진행 여부
-        const bool gameRunning = gameState_ == GamePlayState::Playing;
+        const bool gameRunning = gameState_ == cna::GamePlayState::Playing;
 
         // Room에 등록된 모든 플레이어의 현재 상태를 스냅샷에 추가
         for (const auto& playerEntry : players_)
@@ -824,7 +845,7 @@ namespace cna::server
     void Room::StartGame() noexcept
     {
         // 게임 진행 상태 설정
-        gameState_ = GamePlayState::Playing;
+        gameState_ = cna::GamePlayState::Playing;
 
         // 득점 배열 초기화
         sideScores_ = {};
@@ -865,7 +886,7 @@ namespace cna::server
     void Room::StopGame() noexcept
     {
         // 게임 대기 상태 설정
-        gameState_ = GamePlayState::Waiting;
+        gameState_ = cna::GamePlayState::Waiting;
 
         // 현재 공격 진영 제거
         attackingSide_ = cna::PlayerSide::None;
@@ -904,7 +925,7 @@ namespace cna::server
         }
 
         // 게임 종료 상태 설정
-        gameState_ = GamePlayState::Finished;
+        gameState_ = cna::GamePlayState::Finished;
 
         // 게임 종료 후 공격 진영 제거
         attackingSide_ = cna::PlayerSide::None;
