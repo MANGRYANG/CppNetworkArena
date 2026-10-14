@@ -19,6 +19,12 @@ namespace cna::network
         "Float size must match uint32_t size for bit casting."
     );
 
+    // 네트워크 바이트 배열에 저장된 8비트 정수를 복원하는 인라인 함수
+    inline std::uint8_t ReadUint8(const std::span<const std::byte> data, const std::size_t offset)
+    {
+        return std::to_integer<std::uint8_t>(data[offset]);
+    }
+
     // 네트워크 바이트 순서로 저장된 16비트 정수를 호스트 값으로 변환하는 인라인 함수
     inline std::uint16_t ReadUint16(const std::span<const std::byte> data, const std::size_t offset)
     {
@@ -50,6 +56,12 @@ namespace cna::network
     inline float ReadFloat32(const std::span<const std::byte> data, const std::size_t offset)
     {
         return std::bit_cast<float>(ReadUint32(data, offset));
+    }
+
+    // 8비트 정수 값을 네트워크 바이트 배열에 기록하는 인라인 함수
+    inline void WriteUint8(std::span<std::byte> data, const std::size_t offset, const std::uint8_t value)
+    {
+        data[offset] = static_cast<std::byte>(value);
     }
 
     // 호스트 바이트 순서의 16비트 정수를 네트워크 바이트 순서로 기록하는 인라인 함수

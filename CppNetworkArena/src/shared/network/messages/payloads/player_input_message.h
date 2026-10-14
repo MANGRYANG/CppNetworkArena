@@ -3,7 +3,6 @@
 #include <network/messages/core/message_codec.h>
 
 #include <array>
-#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -70,7 +69,7 @@ namespace cna::network
         WriteUint16(payload, 0, std::bit_cast<std::uint16_t>(input.moveX));
         WriteUint16(payload, sizeof(std::int16_t), std::bit_cast<std::uint16_t>(input.moveY));
         WriteUint16(payload, sizeof(std::int16_t) * 2, std::bit_cast<std::uint16_t>(input.moveZ));
-        payload[sizeof(std::int16_t) * 3] = std::byte{ static_cast<unsigned char>(input.dash ? 1 : 0) };
+        WriteUint8(payload, sizeof(std::int16_t) * 3, static_cast<std::uint8_t>(input.dash ? 1 : 0));
 
         return true;
     }
@@ -97,7 +96,7 @@ namespace cna::network
             return false;
         }
 
-        const std::uint8_t dashValue = std::to_integer<std::uint8_t>(payload[sizeof(std::int16_t) * 3]);
+        const std::uint8_t dashValue = ReadUint8(payload, sizeof(std::int16_t) * 3); 
 
         // Dash 입력 값이 유효하지 않은 경우
         if (dashValue > 1)

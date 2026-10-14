@@ -3,7 +3,6 @@
 #include <NetworkTypes.h>
 #include <network/messages/core/message_codec.h>
 
-#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -189,15 +188,15 @@ namespace cna::network
         offset += sizeof(std::uint32_t);
 
         // 현재 게임 진행 상태 직렬화
-        payload[offset] = static_cast<std::byte>(static_cast<std::uint8_t>(snapshot.gamePlayState));
+        WriteUint8(payload, offset, static_cast<std::uint8_t>(snapshot.gamePlayState));
         offset += sizeof(std::uint8_t);
 
         // 현재 공격 진영 직렬화
-        payload[offset] = static_cast<std::byte>(static_cast<std::uint8_t>(snapshot.attackingSide));
+        WriteUint8(payload, offset, static_cast<std::uint8_t>(snapshot.attackingSide));
         offset += sizeof(std::uint8_t);
 
         // 현재 승리 진영 직렬화
-        payload[offset] = static_cast<std::byte>(static_cast<std::uint8_t>(snapshot.winningSide));
+        WriteUint8(payload, offset, static_cast<std::uint8_t>(snapshot.winningSide));
         offset += sizeof(std::uint8_t);
 
         // 전체 게임 잔여 시간 직렬화
@@ -235,7 +234,7 @@ namespace cna::network
             offset += sizeof(std::uint32_t);
 
             // 플레이어 진영을 1바이트 값으로 직렬화
-            payload[offset] = static_cast<std::byte>(static_cast<std::uint8_t>(state.side));
+            WriteUint8(payload, offset, static_cast<std::uint8_t>(state.side));
             offset += sizeof(std::uint8_t);
 
             WriteFloat32(payload, offset, state.positionX);
@@ -280,15 +279,15 @@ namespace cna::network
         offset += sizeof(std::uint32_t);
 
         // 게임 진행 상태 역직렬화
-        decodedSnapshot.gamePlayState = static_cast<cna::GamePlayState>(std::to_integer<std::uint8_t>(payload[offset]));
+        decodedSnapshot.gamePlayState = static_cast<cna::GamePlayState>(ReadUint8(payload, offset));
         offset += sizeof(std::uint8_t);
 
         // 현재 공격 진영 역직렬화
-        decodedSnapshot.attackingSide = static_cast<cna::PlayerSide>(std::to_integer<std::uint8_t>(payload[offset]));
+        decodedSnapshot.attackingSide = static_cast<cna::PlayerSide>(ReadUint8(payload, offset));
         offset += sizeof(std::uint8_t);
 
         // 현재 승리 진영 역직렬화
-        decodedSnapshot.winningSide = static_cast<cna::PlayerSide>(std::to_integer<std::uint8_t>(payload[offset]));
+        decodedSnapshot.winningSide = static_cast<cna::PlayerSide>(ReadUint8(payload, offset));
         offset += sizeof(std::uint8_t);
 
         // 전체 게임 잔여 시간 역직렬화
@@ -356,7 +355,7 @@ namespace cna::network
             state.playerId = ReadUint32(payload, offset);
             offset += sizeof(std::uint32_t);
 
-            state.side = static_cast<cna::PlayerSide>(std::to_integer<std::uint8_t>(payload[offset]));
+            state.side = static_cast<cna::PlayerSide>(ReadUint8(payload, offset));
             offset += sizeof(std::uint8_t);
 
             state.positionX = ReadFloat32(payload, offset);

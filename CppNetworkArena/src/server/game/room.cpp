@@ -646,7 +646,7 @@ namespace cna::server
         snapshot.players.reserve(players_.size());
 
         // 현재 게임 진행 상태 적용
-        snapshot.gameState = gameState_;
+        snapshot.gamePlayState = gameState_;
 
         // 현재 공격 진영 적용
         snapshot.attackingSide = attackingSide_;
