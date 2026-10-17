@@ -422,6 +422,16 @@ namespace cna::client
         return true;
     }
 
+    ID3D11Device* D3D11Renderer::GetDevice() const noexcept
+    {
+        return device_.Get();
+    }
+
+    IDXGISwapChain* D3D11Renderer::GetSwapChain() const noexcept
+    {
+        return swapChain_.Get();
+    }
+
     bool D3D11Renderer::Resize(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept
     {
         // 클라이언트 영역 크기 변경에 필요한 자원이 준비되지 않은 경우 실패 처리
@@ -550,7 +560,7 @@ namespace cna::client
         swapChainDesc.Flags = 0;
 
         // 디바이스 생성 시 사용할 특수 기능을 담는 변수
-        UINT createDeviceFlags = 0;
+        UINT createDeviceFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 
         // Debug 모드로 빌드하는 경우 debug layer 기능 플래그 추가
 #if defined(_DEBUG)

@@ -76,6 +76,12 @@ namespace cna::client
         // 백 버퍼와 프론트 버퍼를 교체하여 프레임을 출력하는 함수
         bool EndFrame();
 
+        // 생성된 DirectX 11 디바이스를 반환하는 함수
+        ID3D11Device* GetDevice() const noexcept;
+
+        // 생성된 DXGI 스왑 체인을 반환하는 함수
+        IDXGISwapChain* GetSwapChain() const noexcept;
+
         // 스왑 체인에 등록된 클라이언트 영역 크기를 변경하는 함수
         bool Resize(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept;
 

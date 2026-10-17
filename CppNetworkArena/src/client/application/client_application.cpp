@@ -137,6 +137,16 @@ namespace cna::client
             return 1;
         }
 
+        // DirectX 11 스왑 체인을 기반으로 게임 HUD 렌더러 초기화
+        if (!gameHudRenderer_.Initialize(renderer_.GetDevice(), renderer_.GetSwapChain()))
+        {
+            std::cerr << "[GameClient] Failed to initialize game HUD renderer" << '\n';
+
+            Shutdown();
+
+            return 1;
+        }
+
         // 애플리케이션에서 사용할 메쉬와 렌더 객체 생성
         if (!InitializeRenderResources())
         {
@@ -883,6 +893,9 @@ namespace cna::client
         meshRepository_.Clear();
         textureRepository_.Clear();
 
+        // 게임 HUD가 참조하는 백 버퍼 자원 해제
+        gameHudRenderer_.Shutdown();
+
         // 메쉬 제거 후 렌더러 관련 자원 해제
         renderer_.Shutdown();
 
@@ -1066,11 +1079,26 @@ namespace cna::client
             return;
         }
 
+        // 스왑 체인 크기 변경 전에 기존 백 버퍼를 참조하는 HUD 자원 해제
+        gameHudRenderer_.PrepareForResize();
+
         // 변경된 클라이언트 영역 크기에 맞춰 그래픽 자원 재구성
         if (!renderer_.Resize(clientWidth, clientHeight))
         {
             std::cerr
                 << "[GameClient] Failed to resize DirectX 11 renderer"
+                << ": width=" << clientWidth
+                << ", height=" << clientHeight
+                << '\n';
+
+            RequestExit(1);
+        }
+
+        // 변경된 스왑 체인 백 버퍼를 기반으로 HUD 렌더링 자원 재생성
+        if (!gameHudRenderer_.RestoreAfterResize())
+        {
+            std::cerr
+                << "[GameClient] Failed to resize game HUD renderer"
                 << ": width=" << clientWidth
                 << ", height=" << clientHeight
                 << '\n';
@@ -1190,6 +1218,36 @@ namespace cna::client
                 {
                     return false;
                 }
+            }
+
+            // 게임 HUD 렌더링 시작
+            if (!gameHudRenderer_.BeginFrame())
+            {
+                std::cerr << "[GameClient] Failed to begin game HUD frame" << '\n';
+
+                RequestExit(1);
+
+                return false;
+            }
+
+            // HUD 렌더링 기반 동작 확인을 위한 임시 텍스트 출력
+            gameHudRenderer_.DrawText
+            (
+                L"Game HUD Rendered",
+                32.0f,
+                24.0f,
+                400.0f,
+                48.0f
+            );
+
+            // 게임 HUD 렌더링 종료
+            if (!gameHudRenderer_.EndFrame())
+            {
+                std::cerr << "[GameClient] Failed to render game HUD" << '\n';
+
+                RequestExit(1);
+
+                return false;
             }
         }
 

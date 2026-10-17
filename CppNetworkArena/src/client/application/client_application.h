@@ -5,6 +5,7 @@
 #include "graphics/mesh/mesh_repository.h"
 #include "graphics/render/render_object.h"
 #include "graphics/texture/texture_repository.h"
+#include "graphics/ui/game_hud_renderer.h"
 #include "network/network_client.h"
 #include "platform/win32_window.h"
 
@@ -163,6 +164,9 @@ namespace cna::client
 
         // DirectX 11 렌더러
         D3D11Renderer renderer_;
+
+        // 게임 HUD를 출력하는 2D UI 렌더러
+        GameHudRenderer gameHudRenderer_;
 
         // 렌더링할 메쉬를 보관하는 메쉬 저장소
         MeshRepository meshRepository_;
