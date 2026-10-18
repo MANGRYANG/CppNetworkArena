@@ -99,6 +99,9 @@ namespace cna::client
         // 렌더 객체가 참조하는 GPU 리소스와 객체별 변환 정보를 사용하여 화면에 출력하는 함수
         bool DrawRenderObject(const RenderObject& renderObject);
 
+        // 현재 게임 진행 상태를 HUD로 출력하는 함수
+        bool DrawGameHud(const cna::network::WorldStateSnapshot& worldState, const bool isLocalPlayerAttacking);
+
         // 비동기 서버 연결을 시작하는 함수
         bool StartConnection();
 

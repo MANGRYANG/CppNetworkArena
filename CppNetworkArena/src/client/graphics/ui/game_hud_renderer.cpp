@@ -125,6 +125,19 @@ namespace cna::client
             return false;
         }
 
+        // 텍스트 가운데 정렬
+        hr = textFormat_->SetTextAlignment
+        (
+            DWRITE_TEXT_ALIGNMENT_CENTER
+        );
+
+        if (FAILED(hr))
+        {
+            Shutdown();
+
+            return false;
+        }
+
         // 스왑 체인 백 버퍼 기반 Direct2D 자원 생성
         if (!CreateBackBufferResources())
         {

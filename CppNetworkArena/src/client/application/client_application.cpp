@@ -826,6 +826,102 @@ namespace cna::client
         return true;
     }
 
+    bool ClientApplication::DrawGameHud(const cna::network::WorldStateSnapshot& worldState, const bool isLocalPlayerAttacking)
+    {
+        // 서버에서 전달된 전체 게임 잔여 시간을 정수 형태 초로 변환
+        const int gameRemainingSeconds = static_cast<int>(std::ceil(worldState.gameRemainingSeconds));
+
+        // 전체 게임 잔여 시간을 나타내는 문자열
+        const std::wstring gameRemainingTimeText = std::to_wstring(gameRemainingSeconds);
+
+        // Flame 진영의 현재 점수를 나타내는 문자열
+        const std::wstring flameScoreText = L"FLAME: " + std::to_wstring(worldState.flameScore);
+        // Frost 진영의 현재 점수를 나타내는 문자열
+        const std::wstring frostScoreText = L"FROST: " + std::to_wstring(worldState.frostScore);
+
+        // 로컬 플레이어의 현재 공수 상태를 나타내는 문자열
+        const std::wstring_view roleText = isLocalPlayerAttacking ? L"ATTACK" : L"DEFENSE";
+
+        // 서버에서 전달된 공수 전환 잔여 시간을 소수점 한 자리 문자열로 변환
+        std::wostringstream attackRoleSwitchTimeStream;
+        attackRoleSwitchTimeStream << std::fixed << std::setprecision(1) << worldState.attackRoleSwitchRemainingSeconds;
+
+        // 공수 전환까지 잔여 시간을 나타내는 문자열
+        const std::wstring attackRoleSwitchTimeText = attackRoleSwitchTimeStream.str();
+
+        // 게임 진행 HUD 렌더링 시작
+        if (!gameHudRenderer_.BeginFrame())
+        {
+            std::cerr << "[GameClient] Failed to begin game HUD frame" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        // Flame 진영의 현재 점수 출력
+        gameHudRenderer_.DrawText
+        (
+            flameScoreText,
+            100.0f,
+            32.0f,
+            200.0f,
+            32.0f
+        );
+
+        // Frost 진영의 현재 점수 출력
+        gameHudRenderer_.DrawText
+        (
+            frostScoreText,
+            980.0f,
+            32.0f,
+            200.0f,
+            32.0f
+        );
+
+        // 전체 게임 잔여 시간 출력
+        gameHudRenderer_.DrawText
+        (
+            gameRemainingTimeText,
+            540.0f,
+            64.0f,
+            200.0f,
+            32.0f
+        );
+
+        // 로컬 플레이어의 현재 공수 역할 출력
+        gameHudRenderer_.DrawText
+        (
+            roleText,
+            540.0f,
+            624.0f,
+            200.0f,
+            32.0f
+        );
+
+        // 다음 공수 전환까지 남은 시간 출력
+        gameHudRenderer_.DrawText
+        (
+            attackRoleSwitchTimeText,
+            540.0f,
+            656.0f,
+            200.0f,
+            32.0f
+        );
+
+        // 게임 진행 HUD 렌더링 종료
+        if (!gameHudRenderer_.EndFrame())
+        {
+            std::cerr << "[GameClient] Failed to render game HUD" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        return true;
+    }
+
     bool ClientApplication::StartConnection()
     {
         return networkClient_->Connect
@@ -1220,34 +1316,38 @@ namespace cna::client
                 }
             }
 
-            // 게임 HUD 렌더링 시작
-            if (!gameHudRenderer_.BeginFrame())
+            // 게임 상태 계층에 저장된 최신 월드 상태 조회
+            const cna::network::WorldStateSnapshot* worldState = clientGameState_.GetWorldState();
+
+            // 최신 월드 상태가 존재하고 게임이 진행 중인 경우
+            if (worldState && worldState->gamePlayState == cna::GamePlayState::Playing)
             {
-                std::cerr << "[GameClient] Failed to begin game HUD frame" << '\n';
+                // 게임 상태 계층에 저장된 로컬 Player ID 조회
+                const auto localPlayerId = clientGameState_.GetLocalPlayerId();
 
-                RequestExit(1);
+                // 로컬 Player ID가 존재하는 경우
+                if (localPlayerId)
+                {
+                    // 최신 월드 상태에서 로컬 플레이어 상태 검색
+                    for (const cna::network::PlayerStateSnapshot& playerState : worldState->players)
+                    {
+                        if (playerState.playerId != *localPlayerId)
+                        {
+                            continue;
+                        }
 
-                return false;
-            }
+                        // 현재 공격 진영과 로컬 플레이어 진영을 비교하여 공격 여부 확인
+                        const bool isLocalPlayerAttacking = playerState.side == worldState->attackingSide;
 
-            // HUD 렌더링 기반 동작 확인을 위한 임시 텍스트 출력
-            gameHudRenderer_.DrawText
-            (
-                L"Game HUD Rendered",
-                32.0f,
-                24.0f,
-                400.0f,
-                48.0f
-            );
+                        // 현재 게임 진행 상태를 HUD로 출력
+                        if (!DrawGameHud(*worldState, isLocalPlayerAttacking))
+                        {
+                            return false;
+                        }
 
-            // 게임 HUD 렌더링 종료
-            if (!gameHudRenderer_.EndFrame())
-            {
-                std::cerr << "[GameClient] Failed to render game HUD" << '\n';
-
-                RequestExit(1);
-
-                return false;
+                        break;
+                    }
+                }
             }
         }
 
