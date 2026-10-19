@@ -57,6 +57,9 @@ namespace cna::client
         // 현재 스왑 체인의 백 버퍼를 기반으로 Direct2D 타겟 비트맵을 생성하는 함수
         bool CreateBackBufferResources();
 
+        // 현재 백 버퍼 크기에 맞추어 HUD 가상 해상도 변환 행렬을 갱신하는 함수
+        void UpdateHudTransform() noexcept;
+
         // 현재 백 버퍼를 참조하는 Direct2D 자원을 정리하는 함수
         void ReleaseBackBufferResources() noexcept;
 
@@ -83,6 +86,9 @@ namespace cna::client
 
         // HUD 텍스트 출력에 사용하는 단색 브러시
         Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> textBrush_;
+
+        // 1280 x 720 HUD 가상 좌표계를 현재 백 버퍼 영역에 맞추기 위한 변환 행렬
+        D2D1_MATRIX_3X2_F hudTransform_ = D2D1::Matrix3x2F::Identity();
 
         // HUD 렌더러 초기화 여부
         bool initialized_ = false;

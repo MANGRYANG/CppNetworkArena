@@ -12,6 +12,15 @@ namespace
 
     // HUD 기본 글꼴 크기
     constexpr float HudFontSize = 20.0f;
+
+    // HUD 배치에 사용할 가상 화면의 너비
+    constexpr float HudVirtualScreenWidth = 1280.0f;
+
+    // HUD 배치에 사용할 가상 화면의 높이
+    constexpr float HudVirtualScreenHeight = 720.0f;
+
+    // HUD 가상 화면에서 유지할 종횡비
+    constexpr float HudVirtualScreenAspectRatio = HudVirtualScreenWidth / HudVirtualScreenHeight;
 }
 
 namespace cna::client
@@ -176,11 +185,8 @@ namespace cna::client
         // Direct2D 렌더링 시작
         direct2DDeviceContext_->BeginDraw();
 
-        // 이전 프레임의 변환 상태 초기화
-        direct2DDeviceContext_->SetTransform
-        (
-            D2D1::Matrix3x2F::Identity()
-        );
+        // 1280 x 720 HUD 가상 좌표계를 현재 백 버퍼 영역에 맞추는 변환 적용
+        direct2DDeviceContext_->SetTransform(hudTransform_);
 
         frameActive_ = true;
 
@@ -269,6 +275,8 @@ namespace cna::client
         direct2DFactory_.Reset();
 
         swapChain_.Reset();
+
+        hudTransform_ = D2D1::Matrix3x2F::Identity();
     }
 
     bool GameHudRenderer::CreateBackBufferResources()
@@ -320,7 +328,67 @@ namespace cna::client
         // 생성된 비트맵을 Direct2D 디바이스 컨텍스트의 렌더링 대상으로 설정
         direct2DDeviceContext_->SetTarget(targetBitmap_.Get());
 
+        // 현재 백 버퍼 크기를 기준으로 HUD 가상 좌표계 변환 행렬 갱신
+        UpdateHudTransform();
+
         return true;
+    }
+
+    void GameHudRenderer::UpdateHudTransform() noexcept
+    {
+        if (!targetBitmap_)
+        {
+            hudTransform_ = D2D1::Matrix3x2F::Identity();
+
+            return;
+        }
+
+        // 현재 Direct2D 타겟 비트맵의 화면 크기 조회
+        const D2D1_SIZE_F targetSize = targetBitmap_->GetSize();
+
+        if (targetSize.width <= 0.0f || targetSize.height <= 0.0f)
+        {
+            hudTransform_ = D2D1::Matrix3x2F::Identity();
+
+            return;
+        }
+
+        // 현재 Direct2D 타겟 비트맵의 종횡비 계산
+        const float targetAspectRatio = targetSize.width / targetSize.height;
+
+        float scale = 1.0f;
+        float offsetX = 0.0f;
+        float offsetY = 0.0f;
+
+        // 너비 방향으로 남는 영역이 있는 경우 높이를 기준으로 HUD 크기 조정
+        if (targetAspectRatio > HudVirtualScreenAspectRatio)
+        {
+            scale = targetSize.height / HudVirtualScreenHeight;
+
+            const float scaledHudWidth = HudVirtualScreenWidth * scale;
+
+            // 필러 박스를 고려한 HUD 영역의 X축 시작 위치 계산
+            offsetX = (targetSize.width - scaledHudWidth) * 0.5f;
+        }
+
+        // 높이 방향으로 남는 영역이 있거나 HUD 가상 화면의 종횡비와 일치하는 경우
+        else
+        {
+            scale = targetSize.width / HudVirtualScreenWidth;
+
+            const float scaledHudHeight = HudVirtualScreenHeight * scale;
+
+            // 레터 박스를 고려한 HUD 영역의 Y축 시작 위치 계산
+            offsetY = (targetSize.height - scaledHudHeight) * 0.5f;
+        }
+
+        // 1280 x 720 HUD 좌표계를 현재 백 버퍼의 게임 화면 영역에 맞추는 변환 행렬 구성
+        hudTransform_ = D2D1::Matrix3x2F
+        (
+            scale, 0.0f,
+            0.0f, scale,
+            offsetX, offsetY
+        );
     }
 
     void GameHudRenderer::ReleaseBackBufferResources() noexcept
