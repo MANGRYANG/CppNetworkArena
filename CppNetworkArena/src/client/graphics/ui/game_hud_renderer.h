@@ -1,6 +1,7 @@
 #pragma once
 
 #include <d2d1_1.h>
+#include <d2d1_1helper.h>
 #include <d3d11.h>
 #include <dwrite.h>
 #include <dxgi.h>
@@ -10,6 +11,15 @@
 
 namespace cna::client
 {
+    // 게임 HUD 텍스트의 출력 형식
+    enum class GameHudTextStyle
+    {
+        Score,
+        GameTimer,
+        Role,
+        RoleSwitchTimer
+    };
+
     // Direct2D와 DirectWrite를 사용하여 게임 HUD를 출력하는 렌더러 클래스
     class GameHudRenderer final
     {
@@ -35,6 +45,7 @@ namespace cna::client
         void DrawText
         (
             std::wstring_view text,
+            GameHudTextStyle style,
             float x,
             float y,
             float width,
@@ -54,6 +65,18 @@ namespace cna::client
         void Shutdown() noexcept;
 
     private:
+        // 지정된 글자 폰트 정보를 사용하는 HUD 텍스트 형식을 생성하는 함수
+        bool CreateHudTextFormat
+        (
+            const wchar_t* fontFamily,
+            const wchar_t* locale,
+            float fontSize,
+            DWRITE_FONT_WEIGHT fontWeight,
+            DWRITE_FONT_STYLE fontStyle,
+            DWRITE_FONT_STRETCH fontStretch,
+            Microsoft::WRL::ComPtr<IDWriteTextFormat>& textFormat
+        );
+
         // 현재 스왑 체인의 백 버퍼를 기반으로 Direct2D 타겟 비트맵을 생성하는 함수
         bool CreateBackBufferResources();
 
@@ -78,8 +101,17 @@ namespace cna::client
         // DirectWrite 텍스트 자원 생성을 담당하는 팩토리
         Microsoft::WRL::ComPtr<IDWriteFactory> directWriteFactory_;
 
-        // HUD 텍스트 형식을 정의하는 DirectWrite 자원
-        Microsoft::WRL::ComPtr<IDWriteTextFormat> textFormat_;
+        // 진영 점수 출력에 사용하는 DirectWrite 텍스트 형식
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> scoreTextFormat_;
+
+        // 전체 게임 잔여 시간 출력에 사용하는 DirectWrite 텍스트 형식
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> gameTimerTextFormat_;
+
+        // 로컬 플레이어의 공수 역할 출력에 사용하는 DirectWrite 텍스트 형식
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> roleTextFormat_;
+
+        // 공수 전환 잔여 시간 출력에 사용하는 DirectWrite 텍스트 형식
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> roleSwitchTimerTextFormat_;
 
         // 현재 스왑 체인 백 버퍼와 연결된 Direct2D 타겟 비트맵
         Microsoft::WRL::ComPtr<ID2D1Bitmap1> targetBitmap_;

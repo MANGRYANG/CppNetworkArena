@@ -863,6 +863,7 @@ namespace cna::client
         gameHudRenderer_.DrawText
         (
             flameScoreText,
+            GameHudTextStyle::Score,
             100.0f,
             32.0f,
             200.0f,
@@ -873,6 +874,7 @@ namespace cna::client
         gameHudRenderer_.DrawText
         (
             frostScoreText,
+            GameHudTextStyle::Score,
             980.0f,
             32.0f,
             200.0f,
@@ -883,6 +885,7 @@ namespace cna::client
         gameHudRenderer_.DrawText
         (
             gameRemainingTimeText,
+            GameHudTextStyle::GameTimer,
             540.0f,
             64.0f,
             200.0f,
@@ -893,6 +896,7 @@ namespace cna::client
         gameHudRenderer_.DrawText
         (
             roleText,
+            GameHudTextStyle::Role,
             540.0f,
             624.0f,
             200.0f,
@@ -903,6 +907,7 @@ namespace cna::client
         gameHudRenderer_.DrawText
         (
             attackRoleSwitchTimeText,
+            GameHudTextStyle::RoleSwitchTimer,
             540.0f,
             656.0f,
             200.0f,

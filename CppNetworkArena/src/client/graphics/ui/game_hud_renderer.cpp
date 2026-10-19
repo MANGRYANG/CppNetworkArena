@@ -1,17 +1,30 @@
 #include "game_hud_renderer.h"
 
-#include <d2d1_1helper.h>
-
 namespace
 {
-    // HUD 텍스트에 사용할 시스템 글꼴
-    constexpr wchar_t HudFontFamily[] = L"Segoe UI";
+    // HUD 텍스트에 사용할 Segoe UI 시스템 글꼴
+    constexpr wchar_t HudSegoeUiFontFamily[] = L"Segoe UI";
+
+    // HUD 텍스트에 사용할 Consolas 시스템 글꼴
+    constexpr wchar_t HudConsolasFontFamily[] = L"Consolas";
+
+    // HUD 텍스트에 사용할 Impact 시스템 글꼴
+    constexpr wchar_t HudImpactFontFamily[] = L"Impact";
 
     // HUD 텍스트에 사용할 로케일
     constexpr wchar_t HudFontLocale[] = L"en-us";
 
-    // HUD 기본 글꼴 크기
-    constexpr float HudFontSize = 20.0f;
+    // 진영 점수에 사용할 글꼴 크기
+    constexpr float HudScoreFontSize = 20.0f;
+
+    // 전체 게임 잔여 시간에 사용할 글꼴 크기
+    constexpr float HudGameTimerFontSize = 32.0f;
+
+    // 공수 역할에 사용할 글꼴 크기
+    constexpr float HudRoleFontSize = 18.0f;
+
+    // 공수 전환 잔여 시간에 사용할 글꼴 크기
+    constexpr float HudRoleSwitchTimerFontSize = 16.0f;
 
     // HUD 배치에 사용할 가상 화면의 너비
     constexpr float HudVirtualScreenWidth = 1280.0f;
@@ -114,33 +127,72 @@ namespace cna::client
             return false;
         }
 
-        // HUD 텍스트 형식 생성
-        hr = directWriteFactory_->CreateTextFormat
-        (
-            HudFontFamily,
-            nullptr,
-            DWRITE_FONT_WEIGHT_SEMI_BOLD,
-            DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL,
-            HudFontSize,
-            HudFontLocale,
-            textFormat_.GetAddressOf()
-        );
-
-        if (FAILED(hr))
+        // 진영 점수 출력에 사용할 텍스트 형식 생성
+        if (!CreateHudTextFormat
+            (
+                HudConsolasFontFamily,
+                HudFontLocale,
+                HudScoreFontSize,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                scoreTextFormat_
+            )
+        )
         {
             Shutdown();
 
             return false;
         }
 
-        // 텍스트 가운데 정렬
-        hr = textFormat_->SetTextAlignment
-        (
-            DWRITE_TEXT_ALIGNMENT_CENTER
-        );
+        // 전체 게임 잔여 시간 출력에 사용할 텍스트 형식 생성
+        if (!CreateHudTextFormat
+            (
+                HudImpactFontFamily,
+                HudFontLocale,
+                HudGameTimerFontSize,
+                DWRITE_FONT_WEIGHT_BOLD,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                gameTimerTextFormat_
+            )
+        )
+        {
+            Shutdown();
 
-        if (FAILED(hr))
+            return false;
+        }
+
+        // 로컬 플레이어의 공수 역할 출력에 사용할 텍스트 형식 생성
+        if (!CreateHudTextFormat
+            (
+                HudSegoeUiFontFamily,
+                HudFontLocale,
+                HudRoleFontSize,
+                DWRITE_FONT_WEIGHT_MEDIUM,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                roleTextFormat_
+            )
+        )
+        {
+            Shutdown();
+
+            return false;
+        }
+
+        // 공수 전환 잔여 시간 출력에 사용할 텍스트 형식 생성
+        if (!CreateHudTextFormat
+            (
+                HudImpactFontFamily,
+                HudFontLocale,
+                HudRoleSwitchTimerFontSize,
+                DWRITE_FONT_WEIGHT_LIGHT,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                roleSwitchTimerTextFormat_
+            )
+        )
         {
             Shutdown();
 
@@ -193,10 +245,37 @@ namespace cna::client
         return true;
     }
 
-    void GameHudRenderer::DrawText(const std::wstring_view text, const float x, const float y, const float width, const float height)
+    void GameHudRenderer::DrawText(const std::wstring_view text, GameHudTextStyle style, const float x, const float y, const float width, const float height)
     {
         // HUD 프레임이 진행 중이 아니거나 텍스트 자원이 준비되지 않은 경우 무시
-        if (!frameActive_ || !direct2DDeviceContext_ || !textFormat_ || !textBrush_ || text.empty())
+        if (!frameActive_ || !direct2DDeviceContext_ || !textBrush_ || text.empty())
+        {
+            return;
+        }
+
+        IDWriteTextFormat* textFormat = nullptr;
+
+        // 전달된 HUD 텍스트 형식에 맞는 DirectWrite 자원 선택
+        switch (style)
+        {
+        case GameHudTextStyle::Score:
+            textFormat = scoreTextFormat_.Get();
+            break;
+
+        case GameHudTextStyle::GameTimer:
+            textFormat = gameTimerTextFormat_.Get();
+            break;
+
+        case GameHudTextStyle::Role:
+            textFormat = roleTextFormat_.Get();
+            break;
+
+        case GameHudTextStyle::RoleSwitchTimer:
+            textFormat = roleSwitchTimerTextFormat_.Get();
+            break;
+        }
+
+        if (!textFormat)
         {
             return;
         }
@@ -209,7 +288,7 @@ namespace cna::client
         (
             text.data(),
             static_cast<UINT32>(text.size()),
-            textFormat_.Get(),
+            textFormat,
             layoutRect,
             textBrush_.Get(),
             D2D1_DRAW_TEXT_OPTIONS_NONE,
@@ -266,7 +345,11 @@ namespace cna::client
         ReleaseBackBufferResources();
 
         textBrush_.Reset();
-        textFormat_.Reset();
+        
+        roleSwitchTimerTextFormat_.Reset();
+        roleTextFormat_.Reset();
+        gameTimerTextFormat_.Reset();
+        scoreTextFormat_.Reset();
 
         directWriteFactory_.Reset();
 
@@ -277,6 +360,60 @@ namespace cna::client
         swapChain_.Reset();
 
         hudTransform_ = D2D1::Matrix3x2F::Identity();
+    }
+
+    bool GameHudRenderer::CreateHudTextFormat(const wchar_t* fontFamily, const wchar_t* locale, float fontSize, DWRITE_FONT_WEIGHT fontWeight, DWRITE_FONT_STYLE fontStyle, DWRITE_FONT_STRETCH fontStretch, Microsoft::WRL::ComPtr<IDWriteTextFormat>& textFormat)
+    {
+        if (!directWriteFactory_ || !fontFamily || !locale)
+        {
+            return false;
+        }
+
+        // 지정된 글꼴과 크기, 굵기를 사용하는 HUD 텍스트 형식 생성
+        HRESULT hr = directWriteFactory_->CreateTextFormat
+        (
+            fontFamily,
+            nullptr,
+            fontWeight,
+            fontStyle,
+            fontStretch,
+            fontSize,
+            locale,
+            textFormat.GetAddressOf()
+        );
+
+        if (FAILED(hr))
+        {
+            return false;
+        }
+
+        // 텍스트 가로 가운데 정렬
+        hr = textFormat->SetTextAlignment
+        (
+            DWRITE_TEXT_ALIGNMENT_CENTER
+        );
+
+        if (FAILED(hr))
+        {
+            textFormat.Reset();
+
+            return false;
+        }
+
+        // 텍스트 세로 가운데 정렬
+        hr = textFormat->SetParagraphAlignment
+        (
+            DWRITE_PARAGRAPH_ALIGNMENT_CENTER
+        );
+
+        if (FAILED(hr))
+        {
+            textFormat.Reset();
+
+            return false;
+        }
+
+        return true;
     }
 
     bool GameHudRenderer::CreateBackBufferResources()
