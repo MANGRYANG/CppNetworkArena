@@ -14,6 +14,9 @@ namespace
     // HUD 텍스트에 사용할 로케일
     constexpr wchar_t HudFontLocale[] = L"en-us";
 
+    // 플레이어 대기 상태에 사용할 글꼴 크기
+    constexpr float HudWaitingFontSize = 56.0f;
+
     // 진영 점수에 사용할 글꼴 크기
     constexpr float HudScoreFontSize = 20.0f;
 
@@ -121,6 +124,24 @@ namespace cna::client
         );
 
         if (FAILED(hr))
+        {
+            Shutdown();
+
+            return false;
+        }
+
+        // 상대 플레이어 대기 상태 출력에 사용할 텍스트 형식 생성
+        if (!CreateHudTextFormat
+            (
+                HudImpactFontFamily,
+                HudFontLocale,
+                HudWaitingFontSize,
+                DWRITE_FONT_WEIGHT_EXTRA_BOLD,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                waitingTextFormat_
+            )
+            )
         {
             Shutdown();
 
@@ -272,6 +293,10 @@ namespace cna::client
         // 전달된 HUD 텍스트 형식에 맞는 DirectWrite 자원 선택
         switch (style)
         {
+        case GameHudTextStyle::Waiting:
+            textFormat = waitingTextFormat_.Get();
+            break;
+
         case GameHudTextStyle::Score:
             textFormat = scoreTextFormat_.Get();
             break;
@@ -375,6 +400,7 @@ namespace cna::client
         defaultTextBrush_.Reset();
         warningTextBrush_.Reset();
         
+        waitingTextFormat_.Reset();
         roleSwitchTimerTextFormat_.Reset();
         roleTextFormat_.Reset();
         gameTimerTextFormat_.Reset();

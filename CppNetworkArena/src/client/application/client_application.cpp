@@ -829,6 +829,42 @@ namespace cna::client
         return true;
     }
 
+    bool ClientApplication::DrawWaitingHud()
+    {
+        // 상대 플레이어 대기 상태 HUD 렌더링 시작
+        if (!gameHudRenderer_.BeginFrame())
+        {
+            std::cerr << "[GameClient] Failed to begin waiting HUD frame" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        // 상대 플레이어 대기 상태 출력
+        gameHudRenderer_.DrawText
+        (
+            L"WAITING FOR OPPONENT...",
+            GameHudTextStyle::Waiting,
+            240.0f,
+            300.0f,
+            800.0f,
+            120.0f
+        );
+
+        // 상대 플레이어 대기 상태 HUD 렌더링 종료
+        if (!gameHudRenderer_.EndFrame())
+        {
+            std::cerr << "[GameClient] Failed to render waiting HUD" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        return true;
+    }
+
     bool ClientApplication::DrawGameHud(const cna::network::WorldStateSnapshot& worldState, const bool isLocalPlayerAttacking)
     {
         // 서버에서 전달된 전체 게임 잔여 시간을 정수 형태 초로 변환
@@ -1334,33 +1370,47 @@ namespace cna::client
             // 게임 상태 계층에 저장된 최신 월드 상태 조회
             const cna::network::WorldStateSnapshot* worldState = clientGameState_.GetWorldState();
 
-            // 최신 월드 상태가 존재하고 게임이 진행 중인 경우
-            if (worldState && worldState->gamePlayState == cna::GamePlayState::Playing)
+            // 최신 월드 상태가 존재하는 경우
+            if (worldState)
             {
-                // 게임 상태 계층에 저장된 로컬 Player ID 조회
-                const auto localPlayerId = clientGameState_.GetLocalPlayerId();
-
-                // 로컬 Player ID가 존재하는 경우
-                if (localPlayerId)
+                // 플레이어 대기 상태인 경우
+                if (worldState->gamePlayState == cna::GamePlayState::Waiting)
                 {
-                    // 최신 월드 상태에서 로컬 플레이어 상태 검색
-                    for (const cna::network::PlayerStateSnapshot& playerState : worldState->players)
+                    // 플레이어 대기 상태 HUD 출력
+                    if (!DrawWaitingHud())
                     {
-                        if (playerState.playerId != *localPlayerId)
+                        return false;
+                    }
+                }
+
+                // 게임이 진행 중인 경우
+                else if (worldState->gamePlayState == cna::GamePlayState::Playing)
+                {
+                    // 게임 상태 계층에 저장된 로컬 Player ID 조회
+                    const auto localPlayerId = clientGameState_.GetLocalPlayerId();
+
+                    // 로컬 Player ID가 존재하는 경우
+                    if (localPlayerId)
+                    {
+                        // 최신 월드 상태에서 로컬 플레이어 상태 검색
+                        for (const cna::network::PlayerStateSnapshot& playerState : worldState->players)
                         {
-                            continue;
+                            if (playerState.playerId != *localPlayerId)
+                            {
+                                continue;
+                            }
+
+                            // 현재 공격 진영과 로컬 플레이어 진영을 비교하여 공격 여부 확인
+                            const bool isLocalPlayerAttacking = playerState.side == worldState->attackingSide;
+
+                            // 현재 게임 진행 상태를 HUD로 출력
+                            if (!DrawGameHud(*worldState, isLocalPlayerAttacking))
+                            {
+                                return false;
+                            }
+
+                            break;
                         }
-
-                        // 현재 공격 진영과 로컬 플레이어 진영을 비교하여 공격 여부 확인
-                        const bool isLocalPlayerAttacking = playerState.side == worldState->attackingSide;
-
-                        // 현재 게임 진행 상태를 HUD로 출력
-                        if (!DrawGameHud(*worldState, isLocalPlayerAttacking))
-                        {
-                            return false;
-                        }
-
-                        break;
                     }
                 }
             }

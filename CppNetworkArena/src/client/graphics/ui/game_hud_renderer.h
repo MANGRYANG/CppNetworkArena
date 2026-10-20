@@ -14,6 +14,7 @@ namespace cna::client
     // 게임 HUD 텍스트의 출력 형식
     enum class GameHudTextStyle
     {
+        Waiting,
         Score,
         GameTimer,
         Role,
@@ -108,6 +109,9 @@ namespace cna::client
 
         // DirectWrite 텍스트 자원 생성을 담당하는 팩토리
         Microsoft::WRL::ComPtr<IDWriteFactory> directWriteFactory_;
+
+        // 플레이어 대기 HUD 출력에 사용하는 DirectWrite 텍스트 형식
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> waitingTextFormat_;
 
         // 진영 점수 출력에 사용하는 DirectWrite 텍스트 형식
         Microsoft::WRL::ComPtr<IDWriteTextFormat> scoreTextFormat_;
