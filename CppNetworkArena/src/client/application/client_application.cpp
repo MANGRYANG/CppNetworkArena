@@ -42,6 +42,9 @@ namespace
     // DirectX 렌더링 영역으로 사용할 기본 클라이언트 높이
     constexpr int InitialClientHeight = 720;
 
+    // 게임 종료 임박 상태를 표시할 잔여 시간 기준
+    constexpr int GameTimerWarningThresholdSeconds = 10;
+
     // Windows 환경에서의 최대 경로 길이를 포함할 수 있는 문자열 버퍼 크기 설정
     constexpr DWORD MaxExecutablePathLength = 32768;
 
@@ -834,6 +837,12 @@ namespace cna::client
         // 전체 게임 잔여 시간을 나타내는 문자열
         const std::wstring gameRemainingTimeText = std::to_wstring(gameRemainingSeconds);
 
+        // 전체 게임 잔여 시간에 따른 텍스트 색상 결정
+        const GameHudTextColor gameTimerTextColor =
+            gameRemainingSeconds < GameTimerWarningThresholdSeconds
+            ? GameHudTextColor::Warning
+            : GameHudTextColor::Default;
+
         // Flame 진영의 현재 점수를 나타내는 문자열
         const std::wstring flameScoreText = L"FLAME: " + std::to_wstring(worldState.flameScore);
         // Frost 진영의 현재 점수를 나타내는 문자열
@@ -889,7 +898,8 @@ namespace cna::client
             540.0f,
             64.0f,
             200.0f,
-            32.0f
+            32.0f,
+            gameTimerTextColor
         );
 
         // 로컬 플레이어의 현재 공수 역할 출력

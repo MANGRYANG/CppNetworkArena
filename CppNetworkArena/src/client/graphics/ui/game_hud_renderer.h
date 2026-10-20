@@ -20,6 +20,13 @@ namespace cna::client
         RoleSwitchTimer
     };
 
+    // 게임 HUD 텍스트의 색상 종류
+    enum class GameHudTextColor
+    {
+        Default,
+        Warning
+    };
+
     // Direct2D와 DirectWrite를 사용하여 게임 HUD를 출력하는 렌더러 클래스
     class GameHudRenderer final
     {
@@ -49,7 +56,8 @@ namespace cna::client
             float x,
             float y,
             float width,
-            float height
+            float height,
+            GameHudTextColor color = GameHudTextColor::Default
         );
 
         // HUD 렌더링 프레임을 종료하는 함수
@@ -116,8 +124,11 @@ namespace cna::client
         // 현재 스왑 체인 백 버퍼와 연결된 Direct2D 타겟 비트맵
         Microsoft::WRL::ComPtr<ID2D1Bitmap1> targetBitmap_;
 
-        // HUD 텍스트 출력에 사용하는 단색 브러시
-        Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> textBrush_;
+        // HUD 기본 텍스트 출력에 사용하는 단색 브러시 (흰색)
+        Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> defaultTextBrush_;
+
+        // HUD 경고 텍스트 출력에 사용하는 단색 브러시 (빨간색)
+        Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> warningTextBrush_;
 
         // 1280 x 720 HUD 가상 좌표계를 현재 백 버퍼 영역에 맞추기 위한 변환 행렬
         D2D1_MATRIX_3X2_F hudTransform_ = D2D1::Matrix3x2F::Identity();

@@ -211,7 +211,21 @@ namespace cna::client
         hr = direct2DDeviceContext_->CreateSolidColorBrush
         (
             D2D1::ColorF(D2D1::ColorF::White),
-            textBrush_.GetAddressOf()
+            defaultTextBrush_.GetAddressOf()
+        );
+
+        if (FAILED(hr))
+        {
+            Shutdown();
+
+            return false;
+        }
+
+        // HUD 경고 텍스트 출력에 사용할 빨간색 브러시 생성
+        hr = direct2DDeviceContext_->CreateSolidColorBrush
+        (
+            D2D1::ColorF(D2D1::ColorF::Red),
+            warningTextBrush_.GetAddressOf()
         );
 
         if (FAILED(hr))
@@ -245,10 +259,10 @@ namespace cna::client
         return true;
     }
 
-    void GameHudRenderer::DrawText(const std::wstring_view text, GameHudTextStyle style, const float x, const float y, const float width, const float height)
+    void GameHudRenderer::DrawText(const std::wstring_view text, GameHudTextStyle style, const float x, const float y, const float width, const float height, GameHudTextColor color)
     {
         // HUD 프레임이 진행 중이 아니거나 텍스트 자원이 준비되지 않은 경우 무시
-        if (!frameActive_ || !direct2DDeviceContext_ || !textBrush_ || text.empty())
+        if (!frameActive_ || !direct2DDeviceContext_ || !defaultTextBrush_ || !warningTextBrush_ || text.empty())
         {
             return;
         }
@@ -275,7 +289,21 @@ namespace cna::client
             break;
         }
 
-        if (!textFormat)
+        ID2D1SolidColorBrush* textBrush = nullptr;
+
+        // 전달된 HUD 텍스트 색상에 맞는 Direct2D 브러시 선택
+        switch (color)
+        {
+        case GameHudTextColor::Default:
+            textBrush = defaultTextBrush_.Get();
+            break;
+
+        case GameHudTextColor::Warning:
+            textBrush = warningTextBrush_.Get();
+            break;
+        }
+
+        if (!textFormat || !textBrush)
         {
             return;
         }
@@ -290,7 +318,7 @@ namespace cna::client
             static_cast<UINT32>(text.size()),
             textFormat,
             layoutRect,
-            textBrush_.Get(),
+            textBrush,
             D2D1_DRAW_TEXT_OPTIONS_NONE,
             DWRITE_MEASURING_MODE_NATURAL
         );
@@ -344,7 +372,8 @@ namespace cna::client
 
         ReleaseBackBufferResources();
 
-        textBrush_.Reset();
+        defaultTextBrush_.Reset();
+        warningTextBrush_.Reset();
         
         roleSwitchTimerTextFormat_.Reset();
         roleTextFormat_.Reset();
