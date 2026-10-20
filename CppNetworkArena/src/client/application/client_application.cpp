@@ -973,6 +973,71 @@ namespace cna::client
         return true;
     }
 
+    bool ClientApplication::DrawGameResultHud(const cna::network::WorldStateSnapshot& worldState, cna::PlayerSide localPlayerSide)
+    {
+        // 승리 진영이 존재하지 않는 경우 무승부로 처리
+        std::wstring_view resultText = L"DRAW";
+
+        // 승리 진영이 존재하는 경우 로컬 플레이어 진영과 비교하여 승패 결정
+        if (worldState.winningSide != cna::PlayerSide::None)
+        {
+            resultText =
+                worldState.winningSide == localPlayerSide
+                ? L"WIN!!"
+                : L"LOSE..";
+        }
+
+        // 최종 진영별 점수를 나타내는 문자열
+        const std::wstring finalScoreText =
+            L"FLAME: " + std::to_wstring(worldState.flameScore) +
+            L"    " +
+            L"FROST: " + std::to_wstring(worldState.frostScore);
+
+        // 게임 종료 HUD 렌더링 시작
+        if (!gameHudRenderer_.BeginFrame())
+        {
+            std::cerr << "[GameClient] Failed to begin game result HUD frame" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        // 로컬 플레이어의 게임 결과 출력
+        gameHudRenderer_.DrawText
+        (
+            resultText,
+            GameHudTextStyle::Result,
+            240.0f,
+            260.0f,
+            800.0f,
+            100.0f
+        );
+
+        // 최종 진영별 점수 출력
+        gameHudRenderer_.DrawText
+        (
+            finalScoreText,
+            GameHudTextStyle::Score,
+            390.0f,
+            360.0f,
+            500.0f,
+            48.0f
+        );
+
+        // 게임 종료 HUD 렌더링 종료
+        if (!gameHudRenderer_.EndFrame())
+        {
+            std::cerr << "[GameClient] Failed to render game result HUD" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        return true;
+    }
+
     bool ClientApplication::StartConnection()
     {
         return networkClient_->Connect
@@ -1383,8 +1448,8 @@ namespace cna::client
                     }
                 }
 
-                // 게임이 진행 중인 경우
-                else if (worldState->gamePlayState == cna::GamePlayState::Playing)
+                // 게임이 진행 중이거나 종료된 경우
+                else
                 {
                     // 게임 상태 계층에 저장된 로컬 Player ID 조회
                     const auto localPlayerId = clientGameState_.GetLocalPlayerId();
@@ -1400,13 +1465,27 @@ namespace cna::client
                                 continue;
                             }
 
-                            // 현재 공격 진영과 로컬 플레이어 진영을 비교하여 공격 여부 확인
-                            const bool isLocalPlayerAttacking = playerState.side == worldState->attackingSide;
-
-                            // 현재 게임 진행 상태를 HUD로 출력
-                            if (!DrawGameHud(*worldState, isLocalPlayerAttacking))
+                            // 게임이 진행 중인 경우
+                            if (worldState->gamePlayState == cna::GamePlayState::Playing)
                             {
-                                return false;
+                                // 현재 공격 진영과 로컬 플레이어 진영을 비교하여 공격 여부 확인
+                                const bool isLocalPlayerAttacking = playerState.side == worldState->attackingSide;
+
+                                // 현재 게임 진행 상태를 HUD로 출력
+                                if (!DrawGameHud(*worldState, isLocalPlayerAttacking))
+                                {
+                                    return false;
+                                }
+                            }
+
+                            // 게임이 종료된 경우
+                            else if (worldState->gamePlayState == cna::GamePlayState::Finished)
+                            {
+                                // 최종 게임 결과를 HUD로 출력
+                                if (!DrawGameResultHud(*worldState, playerState.side))
+                                {
+                                    return false;
+                                }
                             }
 
                             break;

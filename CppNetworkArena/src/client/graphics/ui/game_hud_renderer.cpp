@@ -26,6 +26,9 @@ namespace
     // 공수 역할에 사용할 글꼴 크기
     constexpr float HudRoleFontSize = 18.0f;
 
+    // 게임 결과에 사용할 글꼴 크기
+    constexpr float HudResultFontSize = 48.0f;
+
     // 공수 전환 잔여 시간에 사용할 글꼴 크기
     constexpr float HudRoleSwitchTimerFontSize = 16.0f;
 
@@ -220,6 +223,24 @@ namespace cna::client
             return false;
         }
 
+        // 게임 결과 출력에 사용할 텍스트 형식 생성
+        if (!CreateHudTextFormat
+            (
+                HudImpactFontFamily,
+                HudFontLocale,
+                HudResultFontSize,
+                DWRITE_FONT_WEIGHT_BOLD,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                resultTextFormat_
+            )
+        )
+        {
+            Shutdown();
+
+            return false;
+        }
+
         // 스왑 체인 백 버퍼 기반 Direct2D 자원 생성
         if (!CreateBackBufferResources())
         {
@@ -311,6 +332,10 @@ namespace cna::client
 
         case GameHudTextStyle::RoleSwitchTimer:
             textFormat = roleSwitchTimerTextFormat_.Get();
+            break;
+
+        case GameHudTextStyle::Result:
+            textFormat = resultTextFormat_.Get();
             break;
         }
 
@@ -405,6 +430,7 @@ namespace cna::client
         roleTextFormat_.Reset();
         gameTimerTextFormat_.Reset();
         scoreTextFormat_.Reset();
+        resultTextFormat_.Reset();
 
         directWriteFactory_.Reset();
 

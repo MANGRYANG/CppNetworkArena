@@ -18,7 +18,8 @@ namespace cna::client
         Score,
         GameTimer,
         Role,
-        RoleSwitchTimer
+        RoleSwitchTimer,
+        Result
     };
 
     // 게임 HUD 텍스트의 색상 종류
@@ -124,6 +125,9 @@ namespace cna::client
 
         // 공수 전환 잔여 시간 출력에 사용하는 DirectWrite 텍스트 형식
         Microsoft::WRL::ComPtr<IDWriteTextFormat> roleSwitchTimerTextFormat_;
+
+        // 게임 결과 출력에 사용하는 DirectWrite 텍스트 형식
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> resultTextFormat_;
 
         // 현재 스왑 체인 백 버퍼와 연결된 Direct2D 타겟 비트맵
         Microsoft::WRL::ComPtr<ID2D1Bitmap1> targetBitmap_;

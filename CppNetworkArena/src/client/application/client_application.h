@@ -105,6 +105,9 @@ namespace cna::client
         // 현재 게임 진행 상태를 HUD로 출력하는 함수
         bool DrawGameHud(const cna::network::WorldStateSnapshot& worldState, const bool isLocalPlayerAttacking);
 
+        // 게임 결과를 HUD로 출력하는 함수
+        bool DrawGameResultHud(const cna::network::WorldStateSnapshot& worldState, cna::PlayerSide localPlayerSide);
+
         // 비동기 서버 연결을 시작하는 함수
         bool StartConnection();
 
