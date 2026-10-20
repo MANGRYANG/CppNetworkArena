@@ -42,6 +42,9 @@ namespace
     // DirectX 렌더링 영역으로 사용할 기본 클라이언트 높이
     constexpr int InitialClientHeight = 720;
 
+    // 게임 종료 임박 상태를 표시할 잔여 시간 기준
+    constexpr int GameTimerWarningThresholdSeconds = 10;
+
     // Windows 환경에서의 최대 경로 길이를 포함할 수 있는 문자열 버퍼 크기 설정
     constexpr DWORD MaxExecutablePathLength = 32768;
 
@@ -132,6 +135,16 @@ namespace cna::client
             std::cerr << "[GameClient] Failed to initialize DirectX 11 renderer" << '\n';
 
             // 애플리케이션 종료
+            Shutdown();
+
+            return 1;
+        }
+
+        // DirectX 11 스왑 체인을 기반으로 게임 HUD 렌더러 초기화
+        if (!gameHudRenderer_.Initialize(renderer_.GetDevice(), renderer_.GetSwapChain()))
+        {
+            std::cerr << "[GameClient] Failed to initialize game HUD renderer" << '\n';
+
             Shutdown();
 
             return 1;
@@ -816,6 +829,215 @@ namespace cna::client
         return true;
     }
 
+    bool ClientApplication::DrawWaitingHud()
+    {
+        // 상대 플레이어 대기 상태 HUD 렌더링 시작
+        if (!gameHudRenderer_.BeginFrame())
+        {
+            std::cerr << "[GameClient] Failed to begin waiting HUD frame" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        // 상대 플레이어 대기 상태 출력
+        gameHudRenderer_.DrawText
+        (
+            L"WAITING FOR OPPONENT...",
+            GameHudTextStyle::Waiting,
+            240.0f,
+            300.0f,
+            800.0f,
+            120.0f
+        );
+
+        // 상대 플레이어 대기 상태 HUD 렌더링 종료
+        if (!gameHudRenderer_.EndFrame())
+        {
+            std::cerr << "[GameClient] Failed to render waiting HUD" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    bool ClientApplication::DrawGameHud(const cna::network::WorldStateSnapshot& worldState, const bool isLocalPlayerAttacking)
+    {
+        // 서버에서 전달된 전체 게임 잔여 시간을 정수 형태 초로 변환
+        const int gameRemainingSeconds = static_cast<int>(std::ceil(worldState.gameRemainingSeconds));
+
+        // 전체 게임 잔여 시간을 나타내는 문자열
+        const std::wstring gameRemainingTimeText = std::to_wstring(gameRemainingSeconds);
+
+        // 전체 게임 잔여 시간에 따른 텍스트 색상 결정
+        const GameHudTextColor gameTimerTextColor =
+            gameRemainingSeconds < GameTimerWarningThresholdSeconds
+            ? GameHudTextColor::Warning
+            : GameHudTextColor::Default;
+
+        // Flame 진영의 현재 점수를 나타내는 문자열
+        const std::wstring flameScoreText = L"FLAME: " + std::to_wstring(worldState.flameScore);
+        // Frost 진영의 현재 점수를 나타내는 문자열
+        const std::wstring frostScoreText = L"FROST: " + std::to_wstring(worldState.frostScore);
+
+        // 로컬 플레이어의 현재 공수 상태를 나타내는 문자열
+        const std::wstring_view roleText = isLocalPlayerAttacking ? L"ATTACK" : L"DEFENSE";
+
+        // 서버에서 전달된 공수 전환 잔여 시간을 소수점 한 자리 문자열로 변환
+        std::wostringstream attackRoleSwitchTimeStream;
+        attackRoleSwitchTimeStream << std::fixed << std::setprecision(1) << worldState.attackRoleSwitchRemainingSeconds;
+
+        // 공수 전환까지 잔여 시간을 나타내는 문자열
+        const std::wstring attackRoleSwitchTimeText = attackRoleSwitchTimeStream.str();
+
+        // 게임 진행 HUD 렌더링 시작
+        if (!gameHudRenderer_.BeginFrame())
+        {
+            std::cerr << "[GameClient] Failed to begin game HUD frame" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        // Flame 진영의 현재 점수 출력
+        gameHudRenderer_.DrawText
+        (
+            flameScoreText,
+            GameHudTextStyle::Score,
+            100.0f,
+            32.0f,
+            200.0f,
+            32.0f
+        );
+
+        // Frost 진영의 현재 점수 출력
+        gameHudRenderer_.DrawText
+        (
+            frostScoreText,
+            GameHudTextStyle::Score,
+            980.0f,
+            32.0f,
+            200.0f,
+            32.0f
+        );
+
+        // 전체 게임 잔여 시간 출력
+        gameHudRenderer_.DrawText
+        (
+            gameRemainingTimeText,
+            GameHudTextStyle::GameTimer,
+            540.0f,
+            64.0f,
+            200.0f,
+            32.0f,
+            gameTimerTextColor
+        );
+
+        // 로컬 플레이어의 현재 공수 역할 출력
+        gameHudRenderer_.DrawText
+        (
+            roleText,
+            GameHudTextStyle::Role,
+            540.0f,
+            624.0f,
+            200.0f,
+            32.0f
+        );
+
+        // 다음 공수 전환까지 남은 시간 출력
+        gameHudRenderer_.DrawText
+        (
+            attackRoleSwitchTimeText,
+            GameHudTextStyle::RoleSwitchTimer,
+            540.0f,
+            656.0f,
+            200.0f,
+            32.0f
+        );
+
+        // 게임 진행 HUD 렌더링 종료
+        if (!gameHudRenderer_.EndFrame())
+        {
+            std::cerr << "[GameClient] Failed to render game HUD" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    bool ClientApplication::DrawGameResultHud(const cna::network::WorldStateSnapshot& worldState, cna::PlayerSide localPlayerSide)
+    {
+        // 승리 진영이 존재하지 않는 경우 무승부로 처리
+        std::wstring_view resultText = L"DRAW";
+
+        // 승리 진영이 존재하는 경우 로컬 플레이어 진영과 비교하여 승패 결정
+        if (worldState.winningSide != cna::PlayerSide::None)
+        {
+            resultText =
+                worldState.winningSide == localPlayerSide
+                ? L"WIN!!"
+                : L"LOSE..";
+        }
+
+        // 최종 진영별 점수를 나타내는 문자열
+        const std::wstring finalScoreText =
+            L"FLAME: " + std::to_wstring(worldState.flameScore) +
+            L"    " +
+            L"FROST: " + std::to_wstring(worldState.frostScore);
+
+        // 게임 종료 HUD 렌더링 시작
+        if (!gameHudRenderer_.BeginFrame())
+        {
+            std::cerr << "[GameClient] Failed to begin game result HUD frame" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        // 로컬 플레이어의 게임 결과 출력
+        gameHudRenderer_.DrawText
+        (
+            resultText,
+            GameHudTextStyle::Result,
+            240.0f,
+            260.0f,
+            800.0f,
+            100.0f
+        );
+
+        // 최종 진영별 점수 출력
+        gameHudRenderer_.DrawText
+        (
+            finalScoreText,
+            GameHudTextStyle::Score,
+            390.0f,
+            360.0f,
+            500.0f,
+            48.0f
+        );
+
+        // 게임 종료 HUD 렌더링 종료
+        if (!gameHudRenderer_.EndFrame())
+        {
+            std::cerr << "[GameClient] Failed to render game result HUD" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        return true;
+    }
+
     bool ClientApplication::StartConnection()
     {
         return networkClient_->Connect
@@ -882,6 +1104,9 @@ namespace cna::client
         // 렌더러보다 먼저 GPU 메쉬와 텍스처 소유권 해제
         meshRepository_.Clear();
         textureRepository_.Clear();
+
+        // 게임 HUD가 참조하는 백 버퍼 자원 해제
+        gameHudRenderer_.Shutdown();
 
         // 메쉬 제거 후 렌더러 관련 자원 해제
         renderer_.Shutdown();
@@ -1066,11 +1291,26 @@ namespace cna::client
             return;
         }
 
+        // 스왑 체인 크기 변경 전에 기존 백 버퍼를 참조하는 HUD 자원 해제
+        gameHudRenderer_.PrepareForResize();
+
         // 변경된 클라이언트 영역 크기에 맞춰 그래픽 자원 재구성
         if (!renderer_.Resize(clientWidth, clientHeight))
         {
             std::cerr
                 << "[GameClient] Failed to resize DirectX 11 renderer"
+                << ": width=" << clientWidth
+                << ", height=" << clientHeight
+                << '\n';
+
+            RequestExit(1);
+        }
+
+        // 변경된 스왑 체인 백 버퍼를 기반으로 HUD 렌더링 자원 재생성
+        if (!gameHudRenderer_.RestoreAfterResize())
+        {
+            std::cerr
+                << "[GameClient] Failed to resize game HUD renderer"
                 << ": width=" << clientWidth
                 << ", height=" << clientHeight
                 << '\n';
@@ -1189,6 +1429,68 @@ namespace cna::client
                 if (!DrawRenderObject(playerRenderEntry.renderObject))
                 {
                     return false;
+                }
+            }
+
+            // 게임 상태 계층에 저장된 최신 월드 상태 조회
+            const cna::network::WorldStateSnapshot* worldState = clientGameState_.GetWorldState();
+
+            // 최신 월드 상태가 존재하는 경우
+            if (worldState)
+            {
+                // 플레이어 대기 상태인 경우
+                if (worldState->gamePlayState == cna::GamePlayState::Waiting)
+                {
+                    // 플레이어 대기 상태 HUD 출력
+                    if (!DrawWaitingHud())
+                    {
+                        return false;
+                    }
+                }
+
+                // 게임이 진행 중이거나 종료된 경우
+                else
+                {
+                    // 게임 상태 계층에 저장된 로컬 Player ID 조회
+                    const auto localPlayerId = clientGameState_.GetLocalPlayerId();
+
+                    // 로컬 Player ID가 존재하는 경우
+                    if (localPlayerId)
+                    {
+                        // 최신 월드 상태에서 로컬 플레이어 상태 검색
+                        for (const cna::network::PlayerStateSnapshot& playerState : worldState->players)
+                        {
+                            if (playerState.playerId != *localPlayerId)
+                            {
+                                continue;
+                            }
+
+                            // 게임이 진행 중인 경우
+                            if (worldState->gamePlayState == cna::GamePlayState::Playing)
+                            {
+                                // 현재 공격 진영과 로컬 플레이어 진영을 비교하여 공격 여부 확인
+                                const bool isLocalPlayerAttacking = playerState.side == worldState->attackingSide;
+
+                                // 현재 게임 진행 상태를 HUD로 출력
+                                if (!DrawGameHud(*worldState, isLocalPlayerAttacking))
+                                {
+                                    return false;
+                                }
+                            }
+
+                            // 게임이 종료된 경우
+                            else if (worldState->gamePlayState == cna::GamePlayState::Finished)
+                            {
+                                // 최종 게임 결과를 HUD로 출력
+                                if (!DrawGameResultHud(*worldState, playerState.side))
+                                {
+                                    return false;
+                                }
+                            }
+
+                            break;
+                        }
+                    }
                 }
             }
         }

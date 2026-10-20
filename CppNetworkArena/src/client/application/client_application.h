@@ -5,6 +5,7 @@
 #include "graphics/mesh/mesh_repository.h"
 #include "graphics/render/render_object.h"
 #include "graphics/texture/texture_repository.h"
+#include "graphics/ui/game_hud_renderer.h"
 #include "network/network_client.h"
 #include "platform/win32_window.h"
 
@@ -98,6 +99,15 @@ namespace cna::client
         // 렌더 객체가 참조하는 GPU 리소스와 객체별 변환 정보를 사용하여 화면에 출력하는 함수
         bool DrawRenderObject(const RenderObject& renderObject);
 
+        // 플레이어 대기 상태를 HUD로 출력하는 함수
+        bool DrawWaitingHud();
+
+        // 현재 게임 진행 상태를 HUD로 출력하는 함수
+        bool DrawGameHud(const cna::network::WorldStateSnapshot& worldState, const bool isLocalPlayerAttacking);
+
+        // 게임 결과를 HUD로 출력하는 함수
+        bool DrawGameResultHud(const cna::network::WorldStateSnapshot& worldState, cna::PlayerSide localPlayerSide);
+
         // 비동기 서버 연결을 시작하는 함수
         bool StartConnection();
 
@@ -163,6 +173,9 @@ namespace cna::client
 
         // DirectX 11 렌더러
         D3D11Renderer renderer_;
+
+        // 게임 HUD를 출력하는 2D UI 렌더러
+        GameHudRenderer gameHudRenderer_;
 
         // 렌더링할 메쉬를 보관하는 메쉬 저장소
         MeshRepository meshRepository_;

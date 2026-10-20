@@ -1,0 +1,150 @@
+#pragma once
+
+#include <d2d1_1.h>
+#include <d2d1_1helper.h>
+#include <d3d11.h>
+#include <dwrite.h>
+#include <dxgi.h>
+#include <wrl/client.h>
+
+#include <string_view>
+
+namespace cna::client
+{
+    // 게임 HUD 텍스트의 출력 형식
+    enum class GameHudTextStyle
+    {
+        Waiting,
+        Score,
+        GameTimer,
+        Role,
+        RoleSwitchTimer,
+        Result
+    };
+
+    // 게임 HUD 텍스트의 색상 종류
+    enum class GameHudTextColor
+    {
+        Default,
+        Warning
+    };
+
+    // Direct2D와 DirectWrite를 사용하여 게임 HUD를 출력하는 렌더러 클래스
+    class GameHudRenderer final
+    {
+    public:
+        GameHudRenderer() = default;
+        ~GameHudRenderer();
+
+        // 복사 생성자 및 복사 대입 연산자 삭제
+        GameHudRenderer(const GameHudRenderer&) = delete;
+        GameHudRenderer& operator=(const GameHudRenderer&) = delete;
+
+        // 이동 생성자 및 이동 대입 연산자 삭제
+        GameHudRenderer(GameHudRenderer&&) = delete;
+        GameHudRenderer& operator=(GameHudRenderer&&) = delete;
+
+        // DirectX 11 디바이스와 스왑 체인을 기반으로 HUD 렌더링 자원을 초기화하는 함수
+        bool Initialize(ID3D11Device* device, IDXGISwapChain* swapChain);
+
+        // HUD 렌더링 프레임을 시작하는 함수
+        bool BeginFrame();
+
+        // 현재 HUD 프레임에 문자열을 출력하는 함수
+        void DrawText
+        (
+            std::wstring_view text,
+            GameHudTextStyle style,
+            float x,
+            float y,
+            float width,
+            float height,
+            GameHudTextColor color = GameHudTextColor::Default
+        );
+
+        // HUD 렌더링 프레임을 종료하는 함수
+        bool EndFrame();
+
+        // 스왑 체인 크기 변경 전에 백 버퍼를 참조하는 HUD 자원을 해제하는 함수
+        void PrepareForResize() noexcept;
+
+        // 스왑 체인 크기 변경 후 백 버퍼 기반 HUD 자원을 다시 생성하는 함수
+        bool RestoreAfterResize();
+
+        // 생성된 HUD 렌더링 자원을 정리하는 함수
+        void Shutdown() noexcept;
+
+    private:
+        // 지정된 글자 폰트 정보를 사용하는 HUD 텍스트 형식을 생성하는 함수
+        bool CreateHudTextFormat
+        (
+            const wchar_t* fontFamily,
+            const wchar_t* locale,
+            float fontSize,
+            DWRITE_FONT_WEIGHT fontWeight,
+            DWRITE_FONT_STYLE fontStyle,
+            DWRITE_FONT_STRETCH fontStretch,
+            Microsoft::WRL::ComPtr<IDWriteTextFormat>& textFormat
+        );
+
+        // 현재 스왑 체인의 백 버퍼를 기반으로 Direct2D 타겟 비트맵을 생성하는 함수
+        bool CreateBackBufferResources();
+
+        // 현재 백 버퍼 크기에 맞추어 HUD 가상 해상도 변환 행렬을 갱신하는 함수
+        void UpdateHudTransform() noexcept;
+
+        // 현재 백 버퍼를 참조하는 Direct2D 자원을 정리하는 함수
+        void ReleaseBackBufferResources() noexcept;
+
+        // HUD 출력 대상 스왑 체인
+        Microsoft::WRL::ComPtr<IDXGISwapChain> swapChain_;
+
+        // Direct2D 1.1 자원 생성을 담당하는 팩토리
+        Microsoft::WRL::ComPtr<ID2D1Factory1> direct2DFactory_;
+
+        // DirectX 11 디바이스와 연결된 Direct2D 디바이스
+        Microsoft::WRL::ComPtr<ID2D1Device> direct2DDevice_;
+
+        // Direct2D 렌더링 명령을 수행하는 디바이스 컨텍스트
+        Microsoft::WRL::ComPtr<ID2D1DeviceContext> direct2DDeviceContext_;
+
+        // DirectWrite 텍스트 자원 생성을 담당하는 팩토리
+        Microsoft::WRL::ComPtr<IDWriteFactory> directWriteFactory_;
+
+        // 플레이어 대기 HUD 출력에 사용하는 DirectWrite 텍스트 형식
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> waitingTextFormat_;
+
+        // 진영 점수 출력에 사용하는 DirectWrite 텍스트 형식
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> scoreTextFormat_;
+
+        // 전체 게임 잔여 시간 출력에 사용하는 DirectWrite 텍스트 형식
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> gameTimerTextFormat_;
+
+        // 로컬 플레이어의 공수 역할 출력에 사용하는 DirectWrite 텍스트 형식
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> roleTextFormat_;
+
+        // 공수 전환 잔여 시간 출력에 사용하는 DirectWrite 텍스트 형식
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> roleSwitchTimerTextFormat_;
+
+        // 게임 결과 출력에 사용하는 DirectWrite 텍스트 형식
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> resultTextFormat_;
+
+        // 현재 스왑 체인 백 버퍼와 연결된 Direct2D 타겟 비트맵
+        Microsoft::WRL::ComPtr<ID2D1Bitmap1> targetBitmap_;
+
+        // HUD 기본 텍스트 출력에 사용하는 단색 브러시 (흰색)
+        Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> defaultTextBrush_;
+
+        // HUD 경고 텍스트 출력에 사용하는 단색 브러시 (빨간색)
+        Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> warningTextBrush_;
+
+        // 1280 x 720 HUD 가상 좌표계를 현재 백 버퍼 영역에 맞추기 위한 변환 행렬
+        D2D1_MATRIX_3X2_F hudTransform_ = D2D1::Matrix3x2F::Identity();
+
+        // HUD 렌더러 초기화 여부
+        bool initialized_ = false;
+
+        // 현재 HUD 프레임의 렌더링 진행 여부
+        bool frameActive_ = false;
+    };
+}

@@ -2,7 +2,7 @@
 cmake_minimum_required (VERSION 3.20)
 
 # CMake 프로젝트 정의
-project(CppNetworkArena VERSION 0.12.0 LANGUAGES CXX)
+project(CppNetworkArena VERSION 0.13.0 LANGUAGES CXX)
 
 # 프로젝트 전체 C++ 컴파일 기준 설정
 set(CMAKE_CXX_STANDARD 20)                  # C++20 표준 사용
@@ -149,6 +149,8 @@ add_executable(GameClient
     src/client/graphics/texture/texture_handle.h
     src/client/graphics/texture/texture_repository.cpp
     src/client/graphics/texture/texture_repository.h
+    src/client/graphics/ui/game_hud_renderer.cpp
+    src/client/graphics/ui/game_hud_renderer.h
     src/client/network/network_client.cpp
     src/client/network/network_client.h
     src/client/platform/win32_window.cpp
@@ -229,6 +231,8 @@ target_link_libraries(GameClient
         shlwapi
         d3d11
         d3dcompiler
+        d2d1
+        dwrite
 )
 
 # Visual Studio에서 GameClient 타깃이 Apps 폴더 아래에 표시되도록 설정
