@@ -18,6 +18,9 @@ find_package(Boost CONFIG REQUIRED COMPONENTS asio)
 # vcpkg가 설치한 Assimp 패키지 탐색
 find_package(assimp CONFIG REQUIRED)
 
+# vcpkg가 설치한 Dear ImGui 패키지 탐색
+find_package(imgui CONFIG REQUIRED)
+
 # ---------------------------------------------------------------------------------------------
 # Shared
 # ---------------------------------------------------------------------------------------------
@@ -149,6 +152,8 @@ add_executable(GameClient
     src/client/graphics/texture/texture_handle.h
     src/client/graphics/texture/texture_repository.cpp
     src/client/graphics/texture/texture_repository.h
+    src/client/graphics/ui/network_ui_renderer.cpp
+    src/client/graphics/ui/network_ui_renderer.h
     src/client/graphics/ui/game_hud_renderer.cpp
     src/client/graphics/ui/game_hud_renderer.h
     src/client/network/network_client.cpp
@@ -233,6 +238,7 @@ target_link_libraries(GameClient
         d3dcompiler
         d2d1
         dwrite
+        imgui::imgui
 )
 
 # Visual Studio에서 GameClient 타깃이 Apps 폴더 아래에 표시되도록 설정

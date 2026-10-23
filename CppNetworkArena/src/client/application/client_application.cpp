@@ -150,6 +150,25 @@ namespace cna::client
             return 1;
         }
 
+        // Win32 및 DirectX 11 자원을 기반으로 네트워크 UI 렌더러 초기화
+        if (!networkUiRenderer_.Initialize(window_.GetHandle(), renderer_.GetDevice(), renderer_.GetDeviceContext()))
+        {
+            std::cerr << "[GameClient] Failed to initialize network UI renderer" << '\n';
+
+            Shutdown();
+
+            return 1;
+        }
+
+        // Win32 메시지를 네트워크 UI 렌더러에 전달하는 콜백 등록
+        window_.SetMessageCallback
+        (
+            [this](HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+            {
+                return networkUiRenderer_.HandleWindowMessage(hwnd, uMsg, wParam, lParam);
+            }
+        );
+
         // 애플리케이션에서 사용할 메쉬와 렌더 객체 생성
         if (!InitializeRenderResources())
         {
@@ -1078,6 +1097,9 @@ namespace cna::client
         // 애플리케이션 실행 루프 중지
         running_ = false;
 
+        // 애플리케이션 종료 과정에서 Win32 메시지가 네트워크 UI에 전달되지 않도록 콜백 연결 해제
+        window_.SetMessageCallback({});
+
         // 애플리케이션 종료 과정에서 크기 변경 콜백이 렌더러를 호출하지 않도록 콜백 연결 해제
         window_.SetResizeCallback({});
 
@@ -1104,6 +1126,9 @@ namespace cna::client
         // 렌더러보다 먼저 GPU 메쉬와 텍스처 소유권 해제
         meshRepository_.Clear();
         textureRepository_.Clear();
+
+        // 네트워크 UI 자원 해제
+        networkUiRenderer_.Shutdown();
 
         // 게임 HUD가 참조하는 백 버퍼 자원 해제
         gameHudRenderer_.Shutdown();
@@ -1493,6 +1518,32 @@ namespace cna::client
                     }
                 }
             }
+        }
+
+        // 네트워크 UI 렌더링 시작
+        if (!networkUiRenderer_.BeginFrame())
+        {
+            std::cerr << "[GameClient] Failed to begin network UI frame" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        // 네트워크 상태 확인을 위한 UI 창 출력
+        networkUiRenderer_.DrawNetworkWindow();
+
+        // Direct2D HUD 출력 이후 DirectX 11 렌더 타겟 다시 바인딩
+        renderer_.BindRenderTargets();
+
+        // 네트워크 UI 렌더링 종료
+        if (!networkUiRenderer_.EndFrame())
+        {
+            std::cerr << "[GameClient] Failed to render network UI" << '\n';
+
+            RequestExit(1);
+
+            return false;
         }
 
         // 백 버퍼와 프론트 버퍼를 교체하여 화면에 출력

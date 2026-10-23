@@ -1,6 +1,13 @@
 {
   "dependencies": [
     "boost-asio",
-    "assimp"
+    "assimp",
+    {
+        "name": "imgui",
+        "features": [
+            "dx11-binding",
+            "win32-binding"
+        ]
+    }
   ]
 }

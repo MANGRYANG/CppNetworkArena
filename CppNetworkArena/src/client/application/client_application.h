@@ -6,6 +6,7 @@
 #include "graphics/render/render_object.h"
 #include "graphics/texture/texture_repository.h"
 #include "graphics/ui/game_hud_renderer.h"
+#include "graphics/ui/network_ui_renderer.h"
 #include "network/network_client.h"
 #include "platform/win32_window.h"
 
@@ -176,6 +177,9 @@ namespace cna::client
 
         // 게임 HUD를 출력하는 2D UI 렌더러
         GameHudRenderer gameHudRenderer_;
+
+        // 네트워크 상태 및 패킷 정보를 시각화하는 UI 렌더러
+        NetworkUiRenderer networkUiRenderer_;
 
         // 렌더링할 메쉬를 보관하는 메쉬 저장소
         MeshRepository meshRepository_;

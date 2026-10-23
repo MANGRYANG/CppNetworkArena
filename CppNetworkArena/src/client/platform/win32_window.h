@@ -12,6 +12,9 @@ namespace cna::client
     class Win32Window final
     {
     public:
+        // Win32 메시지를 외부 객체에 전달하는 콜백 타입
+        using MessageCallback = std::function<bool(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)>;
+
         // 클라이언트 영역 크기 변경 이벤트를 전달하는 콜백 타입
         using ResizeCallback = std::function<void(std::uint32_t clientWidth, std::uint32_t clientHeight)>;
 
@@ -38,6 +41,9 @@ namespace cna::client
         // 운영체제 메시지를 확인하여 처리하는 함수
         void ProcessMessages(bool& running);
 
+        // Win32 메시지 콜백을 설정하는 함수
+        void SetMessageCallback(MessageCallback callback) noexcept;
+
         // 클라이언트 영역 크기 변경 콜백을 설정하는 함수
         void SetResizeCallback(ResizeCallback callback) noexcept;
 
@@ -62,6 +68,9 @@ namespace cna::client
 
         // 윈도우 클래스명
         const wchar_t* WindowClassName = L"CNAGameClientWindow";
+
+        // Win32 메시지를 전달하는 콜백
+        MessageCallback messageCallback_;
 
         // 클라이언트 영역 크기 변경 이벤트를 전달하는 콜백
         ResizeCallback resizeCallback_;
