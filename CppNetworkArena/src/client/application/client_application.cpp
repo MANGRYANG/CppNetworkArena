@@ -72,6 +72,30 @@ namespace
         // 클라이언트 런타임 파일의 절대 경로 반환
         return std::filesystem::path(executablePathBuffer).parent_path()/relativeFilePath;
     }
+
+    // 클라이언트 연결 상태에 대응하는 문자열을 반환하는 함수
+    const char* GetConnectionStateText(const cna::client::NetworkClient::ConnectionState connectionState) noexcept
+    {
+        using ConnectionState = cna::client::NetworkClient::ConnectionState;
+
+        switch (connectionState)
+        {
+        case ConnectionState::Disconnected:
+            return "Disconnected";
+
+        case ConnectionState::Resolving:
+            return "Resolving";
+
+        case ConnectionState::Connecting:
+            return "Connecting";
+
+        case ConnectionState::Connected:
+            return "Connected";
+            
+        default:
+            return "Unknown";
+        }
+    }
 }
 
 namespace cna::client
@@ -1520,6 +1544,41 @@ namespace cna::client
             }
         }
 
+        // 네트워크 모니터 UI에 전달할 현재 상태 정보 구성
+        NetworkUiData networkUiData;
+
+        if (networkClient_)
+        {
+            networkUiData.connectionState = GetConnectionStateText(networkClient_->GetConnectionState());
+        }
+
+        // 현재 Room 및 로컬 Player 식별 정보 저장
+        networkUiData.roomId = clientGameState_.GetRoomId();
+        networkUiData.playerId = clientGameState_.GetLocalPlayerId();
+
+        // 마지막으로 적용된 서버 Tick 저장
+        networkUiData.latestServerTick = clientGameState_.GetLatestServerTick();
+
+        // 현재 월드 상태 스냅샷 히스토리 정보 저장
+        networkUiData.snapshotHistorySize = worldStateSnapshotHistory_.size();
+        networkUiData.snapshotHistoryCapacity = MaxWorldStateSnapshotHistorySize;
+
+        // 게임 상태 계층에 저장된 최신 월드 상태 조회
+        const cna::network::WorldStateSnapshot* networkUiWorldState = clientGameState_.GetWorldState();
+
+        if (networkUiWorldState)
+        {
+            // 현재 게임 진행 상태 저장
+            networkUiData.gamePlayState = networkUiWorldState->gamePlayState;
+
+            // 현재 공격 진영 저장
+            networkUiData.attackingSide = networkUiWorldState->attackingSide;
+
+            // 현재 진영별 점수 저장
+            networkUiData.flameScore = networkUiWorldState->flameScore;
+            networkUiData.frostScore = networkUiWorldState->frostScore;
+        }
+
         // 네트워크 UI 렌더링 시작
         if (!networkUiRenderer_.BeginFrame())
         {
@@ -1531,7 +1590,7 @@ namespace cna::client
         }
 
         // 네트워크 상태 확인을 위한 UI 창 출력
-        networkUiRenderer_.DrawNetworkWindow();
+        networkUiRenderer_.DrawNetworkWindow(networkUiData);
 
         // Direct2D HUD 출력 이후 DirectX 11 렌더 타겟 다시 바인딩
         renderer_.BindRenderTargets();

@@ -1,11 +1,36 @@
 #pragma once
 
+#include <NetworkTypes.h>
+
 #include <Windows.h>
 
 #include <d3d11.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+
 namespace cna::client
 {
+    // 네트워크 모니터 UI에 표시할 상태 정보
+    struct NetworkUiData final
+    {
+        const char* connectionState = "Disconnected";
+
+        std::optional<cna::RoomId> roomId;
+        std::optional<cna::PlayerId> playerId;
+        std::optional<cna::ServerTick> latestServerTick;
+
+        std::size_t snapshotHistorySize = 0;
+        std::size_t snapshotHistoryCapacity = 0;
+
+        std::optional<cna::GamePlayState> gamePlayState;
+        std::optional<cna::PlayerSide> attackingSide;
+
+        std::uint32_t flameScore = 0;
+        std::uint32_t frostScore = 0;
+    };
+
     // Dear ImGui를 사용하여 네트워크 상태 및 패킷 정보를 시각화하는 UI 렌더러 클래스
     class NetworkUiRenderer final
     {
@@ -33,7 +58,7 @@ namespace cna::client
         bool BeginFrame();
 
         // 네트워크 상태를 표시하는 UI 창을 출력하는 함수
-        void DrawNetworkWindow();
+        void DrawNetworkWindow(const NetworkUiData& data);
 
         // 네트워크 UI 렌더링 프레임을 종료하고 화면에 출력하는 함수
         bool EndFrame();

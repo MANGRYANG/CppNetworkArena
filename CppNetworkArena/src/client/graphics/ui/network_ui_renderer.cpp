@@ -7,6 +7,47 @@
 // Dear ImGui Win32 Platform Backend의 윈도우 메시지 처리 함수 선언
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
+namespace
+{
+    // 게임 진행 상태에 대응하는 문자열을 반환하는 함수
+    const char* GetGamePlayStateText(const cna::GamePlayState gamePlayState) noexcept
+    {
+        switch (gamePlayState)
+        {
+        case cna::GamePlayState::Waiting:
+            return "Waiting";
+
+        case cna::GamePlayState::Playing:
+            return "Playing";
+
+        case cna::GamePlayState::Finished:
+            return "Finished";
+
+        default:
+            return "Unknown";
+        }
+    }
+
+    // 플레이어 진영에 대응하는 문자열을 반환하는 함수
+    const char* GetPlayerSideText(const cna::PlayerSide playerSide) noexcept
+    {
+        switch (playerSide)
+        {
+        case cna::PlayerSide::None:
+            return "None";
+
+        case cna::PlayerSide::Flame:
+            return "Flame";
+
+        case cna::PlayerSide::Frost:
+            return "Frost";
+
+        default:
+            return "Unknown";
+        }
+    }
+}
+
 namespace cna::client
 {
     NetworkUiRenderer::~NetworkUiRenderer()
@@ -84,7 +125,7 @@ namespace cna::client
         return true;
     }
 
-    void NetworkUiRenderer::DrawNetworkWindow()
+    void NetworkUiRenderer::DrawNetworkWindow(const NetworkUiData& data)
     {
         if (!frameActive_)
         {
@@ -108,7 +149,66 @@ namespace cna::client
         // Dear ImGui 렌더링 확인을 위한 UI 윈도우 출력
         ImGui::Begin("Network Monitor");
 
-        ImGui::TextUnformatted("Network UI initialized.");
+        // 현재 서버 연결 상태 출력
+        ImGui::Text("Connection: %s", data.connectionState);
+
+        // 현재 Room ID 출력
+        if (data.roomId)
+        {
+            ImGui::Text("Room ID: %u", static_cast<unsigned int>(*data.roomId));
+        }
+        else
+        {
+            ImGui::TextUnformatted("Room ID: -");
+        }
+
+        // 현재 로컬 Player ID 출력
+        if (data.playerId)
+        {
+            ImGui::Text("Player ID: %u", static_cast<unsigned int>(*data.playerId));
+        }
+        else
+        {
+            ImGui::TextUnformatted("Player ID: -");
+        }
+
+        // 수평선 출력
+        ImGui::Separator();
+
+        // 마지막으로 적용된 서버 Tick 출력
+        if (data.latestServerTick)
+        {
+            ImGui::Text("Latest Server Tick: %llu", static_cast<unsigned long long>(*data.latestServerTick));
+        }
+        else
+        {
+            ImGui::TextUnformatted("Latest Server Tick: -");
+        }
+
+        // 현재 보관 중인 월드 상태 스냅샷 개수 출력
+        ImGui::Text
+        (
+            "Snapshot History: %llu / %llu",
+            static_cast<unsigned long long>(data.snapshotHistorySize),
+            static_cast<unsigned long long>(data.snapshotHistoryCapacity)
+        );
+
+        // 수평선 출력
+        ImGui::Separator();
+
+        // 최신 월드 상태가 존재하는 경우 게임 상태 정보 출력
+        if (data.gamePlayState)
+        {
+            ImGui::Text("Game State: %s", GetGamePlayStateText(*data.gamePlayState));
+            ImGui::Text("Attacking Side: %s", data.attackingSide ? GetPlayerSideText(*data.attackingSide) : "-");
+            ImGui::Text("Score: FLAME %u : %u FROST", static_cast<unsigned int>(data.flameScore), static_cast<unsigned int>(data.frostScore));
+        }
+        else
+        {
+            ImGui::TextUnformatted("Game State: -");
+            ImGui::TextUnformatted("Attacking Side: -");
+            ImGui::TextUnformatted("Score: -");
+        }
 
         ImGui::End();
     }
