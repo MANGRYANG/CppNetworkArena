@@ -33,6 +33,9 @@ namespace
     using namespace std::chrono_literals;
     constexpr std::chrono::milliseconds WorldStateInterpolationDelay = 64ms;
 
+    // RTT를 주기적으로 측정하기 위한 Ping 메시지 전송 간격
+    constexpr std::chrono::milliseconds RttProbeInterval = 500ms;
+
     // 플레이어의 한 바퀴 회전에 해당하는 라디안 값
     constexpr float FullRotationRadians = 6.28318530717958647692f;
 
@@ -71,6 +74,30 @@ namespace
 
         // 클라이언트 런타임 파일의 절대 경로 반환
         return std::filesystem::path(executablePathBuffer).parent_path()/relativeFilePath;
+    }
+
+    // 클라이언트 연결 상태에 대응하는 문자열을 반환하는 함수
+    const char* GetConnectionStateText(const cna::client::NetworkClient::ConnectionState connectionState) noexcept
+    {
+        using ConnectionState = cna::client::NetworkClient::ConnectionState;
+
+        switch (connectionState)
+        {
+        case ConnectionState::Disconnected:
+            return "Disconnected";
+
+        case ConnectionState::Resolving:
+            return "Resolving";
+
+        case ConnectionState::Connecting:
+            return "Connecting";
+
+        case ConnectionState::Connected:
+            return "Connected";
+            
+        default:
+            return "Unknown";
+        }
     }
 }
 
@@ -149,6 +176,25 @@ namespace cna::client
 
             return 1;
         }
+
+        // Win32 및 DirectX 11 자원을 기반으로 네트워크 UI 렌더러 초기화
+        if (!networkUiRenderer_.Initialize(window_.GetHandle(), renderer_.GetDevice(), renderer_.GetDeviceContext()))
+        {
+            std::cerr << "[GameClient] Failed to initialize network UI renderer" << '\n';
+
+            Shutdown();
+
+            return 1;
+        }
+
+        // Win32 메시지를 네트워크 UI 렌더러에 전달하는 콜백 등록
+        window_.SetMessageCallback
+        (
+            [this](HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+            {
+                return networkUiRenderer_.HandleWindowMessage(hwnd, uMsg, wParam, lParam);
+            }
+        );
 
         // 애플리케이션에서 사용할 메쉬와 렌더 객체 생성
         if (!InitializeRenderResources())
@@ -1078,6 +1124,9 @@ namespace cna::client
         // 애플리케이션 실행 루프 중지
         running_ = false;
 
+        // 애플리케이션 종료 과정에서 Win32 메시지가 네트워크 UI에 전달되지 않도록 콜백 연결 해제
+        window_.SetMessageCallback({});
+
         // 애플리케이션 종료 과정에서 크기 변경 콜백이 렌더러를 호출하지 않도록 콜백 연결 해제
         window_.SetResizeCallback({});
 
@@ -1104,6 +1153,9 @@ namespace cna::client
         // 렌더러보다 먼저 GPU 메쉬와 텍스처 소유권 해제
         meshRepository_.Clear();
         textureRepository_.Clear();
+
+        // 네트워크 UI 자원 해제
+        networkUiRenderer_.Shutdown();
 
         // 게임 HUD가 참조하는 백 버퍼 자원 해제
         gameHudRenderer_.Shutdown();
@@ -1364,7 +1416,22 @@ namespace cna::client
 
     void ClientApplication::Update()
     {
-        // 아직 Room 입장이 승인되지 않은 경우 플레이어 입력을 전송하지 않음
+        // 현재 서버와 연결된 경우 주기적으로 RTT 측정
+        if (networkClient_->IsConnected())
+        {
+            const auto currentTime = std::chrono::steady_clock::now();
+
+            if (currentTime - lastRttProbeSentAt_ >= RttProbeInterval)
+            {
+                // Ping 전송에 성공한 경우 마지막 측정 요청 시각 갱신
+                if (networkClient_->SendPing())
+                {
+                    lastRttProbeSentAt_ = currentTime;
+                }
+            }
+        }
+
+        // 아직 Room 입장이 승인되지 않은 경우 게임 상태 처리 중단
         if (!clientGameState_.HasPlayerIdentity())
         {
             return;
@@ -1375,6 +1442,15 @@ namespace cna::client
 
         // 계산된 보간 구간을 기반으로 플레이어 위치와 회전 보간 및 갱신
         ApplyInterpolatedPlayerStates();
+
+        // 게임 상태 계층에 저장된 최신 월드 상태 조회
+        const cna::network::WorldStateSnapshot* worldState = clientGameState_.GetWorldState();
+
+        // 최신 월드 상태가 존재하지 않거나 게임 진행 중이 아닌 경우 플레이어 입력을 전송하지 않음
+        if (!worldState || worldState->gamePlayState != cna::GamePlayState::Playing)
+        {
+            return;
+        }
 
         // 현재 키보드 상태를 플레이어 이동 입력으로 구성
         currentPlayerInput_ = CollectPlayerInput();
@@ -1493,6 +1569,93 @@ namespace cna::client
                     }
                 }
             }
+        }
+
+        // 네트워크 모니터 UI에 전달할 현재 상태 정보 구성
+        NetworkUiData networkUiData;
+
+        if (networkClient_)
+        {
+            networkUiData.connectionState = GetConnectionStateText(networkClient_->GetConnectionState());
+            networkUiData.rttMilliseconds = networkClient_->GetLatestRttMilliseconds();
+
+            // 최근 네트워크 메시지 기록 조회
+            const auto& packetLog = networkClient_->GetPacketLog();
+
+            // UI에 표시할 최근 메시지의 시작 위치 계산
+            const std::size_t packetLogStartIndex = packetLog.size() > networkUiData.packetLog.size() ? packetLog.size() - networkUiData.packetLog.size() : 0;
+
+            // 네트워크 메시지 기록을 UI 출력 데이터로 변환
+            for (std::size_t index = packetLogStartIndex; index < packetLog.size(); ++index)
+            {
+                const NetworkClient::PacketLogEntry& packet = packetLog[index];
+
+                NetworkUiPacketLogEntry& uiPacket = networkUiData.packetLog[networkUiData.packetLogSize];
+
+                uiPacket.direction =
+                    packet.direction == NetworkClient::PacketLogDirection::Send
+                    ? NetworkUiPacketDirection::Send
+                    : NetworkUiPacketDirection::Receive;
+
+                uiPacket.messageType = packet.messageType;
+
+                uiPacket.payloadSize = packet.payloadSize;
+
+                ++networkUiData.packetLogSize;
+            }
+        }
+
+        // 현재 Room 및 로컬 Player 식별 정보 저장
+        networkUiData.roomId = clientGameState_.GetRoomId();
+        networkUiData.playerId = clientGameState_.GetLocalPlayerId();
+
+        // 마지막으로 적용된 서버 Tick 저장
+        networkUiData.latestServerTick = clientGameState_.GetLatestServerTick();
+
+        // 현재 월드 상태 스냅샷 히스토리 정보 저장
+        networkUiData.snapshotHistorySize = worldStateSnapshotHistory_.size();
+        networkUiData.snapshotHistoryCapacity = MaxWorldStateSnapshotHistorySize;
+
+        // 게임 상태 계층에 저장된 최신 월드 상태 조회
+        const cna::network::WorldStateSnapshot* networkUiWorldState = clientGameState_.GetWorldState();
+
+        if (networkUiWorldState)
+        {
+            // 현재 게임 진행 상태 저장
+            networkUiData.gamePlayState = networkUiWorldState->gamePlayState;
+
+            // 현재 공격 진영 저장
+            networkUiData.attackingSide = networkUiWorldState->attackingSide;
+
+            // 현재 진영별 점수 저장
+            networkUiData.flameScore = networkUiWorldState->flameScore;
+            networkUiData.frostScore = networkUiWorldState->frostScore;
+        }
+
+        // 네트워크 UI 렌더링 시작
+        if (!networkUiRenderer_.BeginFrame())
+        {
+            std::cerr << "[GameClient] Failed to begin network UI frame" << '\n';
+
+            RequestExit(1);
+
+            return false;
+        }
+
+        // 네트워크 상태 확인을 위한 UI 창 출력
+        networkUiRenderer_.DrawNetworkWindow(networkUiData);
+
+        // Direct2D HUD 출력 이후 DirectX 11 렌더 타겟 다시 바인딩
+        renderer_.BindRenderTargets();
+
+        // 네트워크 UI 렌더링 종료
+        if (!networkUiRenderer_.EndFrame())
+        {
+            std::cerr << "[GameClient] Failed to render network UI" << '\n';
+
+            RequestExit(1);
+
+            return false;
         }
 
         // 백 버퍼와 프론트 버퍼를 교체하여 화면에 출력

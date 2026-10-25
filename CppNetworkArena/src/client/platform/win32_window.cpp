@@ -164,6 +164,11 @@ namespace cna::client
         }
     }
 
+    void Win32Window::SetMessageCallback(MessageCallback callback) noexcept
+    {
+        messageCallback_ = std::move(callback);
+    }
+
     void Win32Window::SetResizeCallback(ResizeCallback callback) noexcept
     {
         resizeCallback_ = std::move(callback);
@@ -212,6 +217,12 @@ namespace cna::client
 
     LRESULT Win32Window::WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
+        // 등록된 외부 메시지 처리기가 현재 메시지를 처리한 경우 기존 처리 루틴 생략
+        if (messageCallback_ && messageCallback_(hwnd, uMsg, wParam, lParam))
+        {
+            return 1;
+        }
+
         switch (uMsg)
         {
         case WM_CLOSE:              // 사용자가 닫기 버튼을 눌렀을 때

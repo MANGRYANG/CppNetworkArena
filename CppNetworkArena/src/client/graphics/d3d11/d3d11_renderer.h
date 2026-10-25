@@ -79,8 +79,14 @@ namespace cna::client
         // 생성된 DirectX 11 디바이스를 반환하는 함수
         ID3D11Device* GetDevice() const noexcept;
 
+        // 생성된 DirectX 11 디바이스 컨텍스트를 반환하는 함수
+        ID3D11DeviceContext* GetDeviceContext() const noexcept;
+
         // 생성된 DXGI 스왑 체인을 반환하는 함수
         IDXGISwapChain* GetSwapChain() const noexcept;
+
+        // 현재 렌더 타겟과 깊이 스텐실 뷰를 출력 병합기 단계에 바인딩하는 함수
+        void BindRenderTargets() noexcept;
 
         // 스왑 체인에 등록된 클라이언트 영역 크기를 변경하는 함수
         bool Resize(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept;

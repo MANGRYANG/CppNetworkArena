@@ -153,13 +153,9 @@ namespace cna::client
         // 화면을 채울 RGBA 색상 데이터 배열을 저장한 배열
         const float clearColor[4] = { r, g, b, a };
 
+        
         // 출력 병합기 단계에 렌더 타겟 뷰 및 깊이 스텐실 뷰를 바인딩
-        deviceContext_->OMSetRenderTargets
-        (
-            1,
-            renderTargetView_.GetAddressOf(),
-            depthStencilView_.Get()
-        );
+        BindRenderTargets();
 
         // 렌더 타겟 뷰가 참조하고 있는 백 버퍼의 모든 픽셀을 지정된 색상으로 초기화
         deviceContext_->ClearRenderTargetView
@@ -427,9 +423,25 @@ namespace cna::client
         return device_.Get();
     }
 
+    ID3D11DeviceContext* D3D11Renderer::GetDeviceContext() const noexcept
+    {
+        return deviceContext_.Get();
+    }
+
     IDXGISwapChain* D3D11Renderer::GetSwapChain() const noexcept
     {
         return swapChain_.Get();
+    }
+
+    void D3D11Renderer::BindRenderTargets() noexcept
+    {
+        // 출력 병합기 단계에 렌더 타겟 및 깊이 스텐실 뷰 바인딩
+        deviceContext_->OMSetRenderTargets
+        (
+            1,
+            renderTargetView_.GetAddressOf(),
+            depthStencilView_.Get()
+        );
     }
 
     bool D3D11Renderer::Resize(std::uint32_t clientWidth, std::uint32_t clientHeight) noexcept

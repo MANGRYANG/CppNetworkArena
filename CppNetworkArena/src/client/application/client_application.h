@@ -6,6 +6,7 @@
 #include "graphics/render/render_object.h"
 #include "graphics/texture/texture_repository.h"
 #include "graphics/ui/game_hud_renderer.h"
+#include "graphics/ui/network_ui_renderer.h"
 #include "network/network_client.h"
 #include "platform/win32_window.h"
 
@@ -153,6 +154,9 @@ namespace cna::client
         // 비동기 통신 중 댕글링 포인터를 방지하기 위한 네트워크 클라이언트
         std::shared_ptr<NetworkClient> networkClient_;
 
+        // 마지막 RTT 측정 Ping을 전송한 시각
+        std::chrono::steady_clock::time_point lastRttProbeSentAt_;
+
         // 서버에서 수신한 현재 클라이언트 게임 상태
         ClientGameState clientGameState_;
 
@@ -176,6 +180,9 @@ namespace cna::client
 
         // 게임 HUD를 출력하는 2D UI 렌더러
         GameHudRenderer gameHudRenderer_;
+
+        // 네트워크 상태 및 패킷 정보를 시각화하는 UI 렌더러
+        NetworkUiRenderer networkUiRenderer_;
 
         // 렌더링할 메쉬를 보관하는 메쉬 저장소
         MeshRepository meshRepository_;

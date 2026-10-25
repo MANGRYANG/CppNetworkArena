@@ -10,11 +10,11 @@ namespace cna::network
         // 유효한 메시지 타입이 지정되지 않은 상태
         Unknown = 0,
 
-        // 클라이언트가 서버에 전송하는 테스트 요청
-        TestRequest = 1,
+        // 클라이언트가 서버에 전송하는 RTT 측정 요청
+        Ping = 1,
 
-        // 서버가 클라이언트에 전송하는 테스트 응답
-        TestResponse = 2,
+        // 서버가 클라이언트에 전송하는 RTT 측정 응답
+        Pong = 2,
 
         // 클라이언트가 서버에 전송하는 플레이어 입력
         PlayerInput = 3,

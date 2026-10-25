@@ -14,6 +14,7 @@
 
 #include <boost/system/errc.hpp>
 
+#include <chrono>
 #include <iostream>
 #include <span>
 #include <string>
@@ -89,6 +90,12 @@ namespace cna::client
         // 새로운 연결에 이전 연결의 송신 데이터가 남지 않도록 초기화
         ClearSendQueue();
 
+        // 새로운 연결에 이전 연결의 패킷 기록이 남지 않도록 초기화
+        packetLog_.clear();
+
+        // 새로운 연결에 이전 연결의 RTT 정보가 남지 않도록 초기화
+        latestRttMilliseconds_.reset();
+
         // 새로운 연결에 이전 연결의 식별 정보가 남지 않도록 초기화
         playerIdentity_.reset();
 
@@ -144,12 +151,12 @@ namespace cna::client
         // 클라이언트가 서버로 송신할 수 있는 메시지 타입인지 검사
         switch (type)
         {
-        case cna::network::MessageType::TestRequest:
+        case cna::network::MessageType::Ping:
         case cna::network::MessageType::PlayerInput:
             break;
 
         case cna::network::MessageType::Unknown:
-        case cna::network::MessageType::TestResponse:
+        case cna::network::MessageType::Pong:
         case cna::network::MessageType::WorldStateSnapshot:
         case cna::network::MessageType::PlayerIdentity:
         default:
@@ -196,6 +203,12 @@ namespace cna::client
         // 송신 중이거나 대기 중인 전체 바이트 수 갱신
         pendingSendBytes_ += messageSize;
 
+        // 송신 메시지 로그 구성
+        PacketLogEntry SentPacketLog = { PacketLogDirection::Send, type, payload.size() };
+
+        // 송신 큐에 등록된 메시지의 로그 기록
+        RecordPacketLog(SentPacketLog);
+
         // 진행 중인 송신 작업이 없는 경우 첫 메시지 송신 작업 등록
         if (!writeInProgress)
         {
@@ -203,6 +216,31 @@ namespace cna::client
         }
 
         return true;
+    }
+
+    bool NetworkClient::SendPing()
+    {
+        // 연결이 완료되지 않은 상태인 경우 송신 요청 거부
+        if (connectionState_ != ConnectionState::Connected)
+        {
+            return false;
+        }
+
+        // Ping 전송 시점의 클라이언트 단조 시각을 나노초 단위로 계산
+        const auto currentTimestampNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        const std::uint64_t clientPingTxTimestampNanoseconds = static_cast<std::uint64_t>(currentTimestampNanoseconds);
+
+        // Ping Payload 구성
+        const cna::network::PingPayload ping
+        {
+            clientPingTxTimestampNanoseconds
+        };
+
+        // Ping Payload 직렬화
+        const auto payload = cna::network::EncodePingPayload(ping);
+
+        // RTT 측정 요청 전송
+        return Send(cna::network::MessageType::Ping, payload);
     }
 
     bool NetworkClient::SendPlayerInput(const cna::network::PlayerInputPayload& input)
@@ -268,6 +306,16 @@ namespace cna::client
         }
 
         return playerIdentity_->playerId;
+    }
+
+    std::optional<float> NetworkClient::GetLatestRttMilliseconds() const noexcept
+    {
+        return latestRttMilliseconds_;
+    }
+
+    const std::deque<NetworkClient::PacketLogEntry>& NetworkClient::GetPacketLog() const noexcept
+    {
+        return packetLog_;
     }
 
     bool NetworkClient::IsCurrentOperation(std::uint64_t connectionGeneration, ConnectionState expectedState) const noexcept
@@ -502,6 +550,12 @@ namespace cna::client
                 payloadSize
             );
 
+            // 수신 메시지 로그 구성
+            PacketLogEntry receivePacketLog = { PacketLogDirection::Receive, header.type, payload.size() };
+
+            // 수신 완료된 메시지의 로그 기록
+            RecordPacketLog(receivePacketLog);
+            
             // 메시지 타입을 확인해 전용 핸들러 함수를 호출
             if (!DispatchMessage(header, payload))
             {
@@ -530,8 +584,8 @@ namespace cna::client
         // 메시지 타입에 따라 전용 핸들러 함수 호출
         switch (header.type)
         {
-        case cna::network::MessageType::TestResponse:
-            return HandleTestResponse(payload);
+        case cna::network::MessageType::Pong:
+            return HandlePong(payload);
 
         case cna::network::MessageType::PlayerIdentity:
             return HandlePlayerIdentity(payload);
@@ -540,7 +594,7 @@ namespace cna::client
             return HandleWorldStateSnapshot(payload);
 
         case cna::network::MessageType::Unknown:
-        case cna::network::MessageType::TestRequest:
+        case cna::network::MessageType::Ping:
         case cna::network::MessageType::PlayerInput:
         default:
             std::cerr
@@ -552,13 +606,41 @@ namespace cna::client
         }
     }
 
-    bool NetworkClient::HandleTestResponse(std::span<const std::byte> payload)
+    bool NetworkClient::HandlePong(const std::span<const std::byte> payload)
     {
-        // 테스트 응답 메시지의 전달 경로 검증용 메시지 출력
-        std::cout
-            << "[NetworkClient] TestResponse dispatched: payload="
-            << payload.size()
-            << '\n';
+        cna::network::PingPayload ping;
+
+        // Pong에 포함된 원본 Ping Payload 역직렬화
+        if (!cna::network::DecodePingPayload(payload, ping))
+        {
+            std::cerr
+                << "[NetworkClient] Invalid Pong payload"
+                << ": payload=" << payload.size()
+                << '\n';
+
+            return false;
+        }
+
+        // Pong 수신 시점의 클라이언트 단조 시각을 나노초 단위로 계산
+        const auto currentTimestampNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        const std::uint64_t clientPongRxTimestampNanoseconds = static_cast<std::uint64_t>(currentTimestampNanoseconds);
+
+        // 클라이언트가 기록한 송신 시각보다 이전 시각이 계산된 경우 비정상 Payload 처리
+        if (clientPongRxTimestampNanoseconds < ping.clientPingTxTimestampNanoseconds)
+        {
+            std::cerr
+                << "[NetworkClient] Invalid Pong timestamp"
+                << '\n';
+
+            return false;
+        }
+
+        // Ping 송신부터 Pong 수신까지의 왕복 지연 시간 계산
+        const std::uint64_t roundTripNanoseconds = clientPongRxTimestampNanoseconds - ping.clientPingTxTimestampNanoseconds;
+
+        // 산출된 RTT를 밀리초 단위로 변환
+        const auto roundTripDuration = std::chrono::nanoseconds(roundTripNanoseconds);
+        latestRttMilliseconds_ = std::chrono::duration<float, std::milli>(roundTripDuration).count();
 
         return true;
     }
@@ -848,6 +930,9 @@ namespace cna::client
         // 실패한 연결 시도의 식별 정보 초기화
         playerIdentity_.reset();
 
+        // 실패한 연결 시도의 RTT 정보 초기화
+        latestRttMilliseconds_.reset();
+
         // 연결 실패 콜백 보관
         ConnectionFailedCallback connectionFailedCallback = std::move(onConnectionFailed_);
 
@@ -892,6 +977,9 @@ namespace cna::client
         // 종료된 연결에 할당됐던 식별 정보 초기화
         playerIdentity_.reset();
 
+        // 종료된 연결에서 측정된 RTT 정보 초기화
+        latestRttMilliseconds_.reset();
+
         // 연결 종료 콜백 보관
         DisconnectedCallback disconnectedCallback = std::move(onDisconnected_);
 
@@ -926,6 +1014,9 @@ namespace cna::client
 
         // 현재 연결에 할당된 식별 정보 초기화
         playerIdentity_.reset();
+
+        // 현재 연결에서 측정한 RTT 정보 초기화
+        latestRttMilliseconds_.reset();
 
         // 콜백 변수 초기화
         onConnected_ = {};
@@ -963,5 +1054,17 @@ namespace cna::client
         socket_.shutdown(Tcp::socket::shutdown_both, ignoredError);
         // 소켓 종료
         socket_.close(ignoredError);
+    }
+
+    void NetworkClient::RecordPacketLog(PacketLogEntry packetLog)
+    {
+        // 최대 기록 개수를 초과하는 경우 가장 오래된 기록 제거
+        if (packetLog_.size() >= MaxPacketLogEntries)
+        {
+            packetLog_.pop_front();
+        }
+
+        // 최근 송수신 메시지 정보 추가
+        packetLog_.push_back(packetLog);
     }
 }
