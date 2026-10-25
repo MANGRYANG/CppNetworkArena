@@ -1431,7 +1431,7 @@ namespace cna::client
             }
         }
 
-        // 아직 Room 입장이 승인되지 않은 경우 플레이어 입력을 전송하지 않음
+        // 아직 Room 입장이 승인되지 않은 경우 게임 상태 처리 중단
         if (!clientGameState_.HasPlayerIdentity())
         {
             return;
@@ -1442,6 +1442,15 @@ namespace cna::client
 
         // 계산된 보간 구간을 기반으로 플레이어 위치와 회전 보간 및 갱신
         ApplyInterpolatedPlayerStates();
+
+        // 게임 상태 계층에 저장된 최신 월드 상태 조회
+        const cna::network::WorldStateSnapshot* worldState = clientGameState_.GetWorldState();
+
+        // 최신 월드 상태가 존재하지 않거나 게임 진행 중이 아닌 경우 플레이어 입력을 전송하지 않음
+        if (!worldState || worldState->gamePlayState != cna::GamePlayState::Playing)
+        {
+            return;
+        }
 
         // 현재 키보드 상태를 플레이어 이동 입력으로 구성
         currentPlayerInput_ = CollectPlayerInput();
