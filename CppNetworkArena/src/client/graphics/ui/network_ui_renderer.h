@@ -2,16 +2,38 @@
 
 #include <NetworkTypes.h>
 
+#include <network/messages/core/message_type.h>
+
 #include <Windows.h>
 
 #include <d3d11.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 
 namespace cna::client
 {
+    // 네트워크 UI에 표시할 메시지 송수신 방향
+    enum class NetworkUiPacketDirection
+    {
+        Unknown,
+        Send,
+        Receive
+    };
+
+    // 네트워크 UI에 표시할 송수신 메시지 정보
+    struct NetworkUiPacketLogEntry final
+    {
+        NetworkUiPacketDirection direction = NetworkUiPacketDirection::Send;
+        cna::network::MessageType messageType = cna::network::MessageType::Unknown;
+        std::size_t payloadSize = 0;
+    };
+
+    // 네트워크 UI에 표시할 최대 송수신 메시지 기록 개수
+    inline constexpr std::size_t MaxNetworkUiPacketLogEntries = 8;
+
     // 네트워크 모니터 UI에 표시할 상태 정보
     struct NetworkUiData final
     {
@@ -30,6 +52,9 @@ namespace cna::client
 
         std::uint32_t flameScore = 0;
         std::uint32_t frostScore = 0;
+
+        std::array<NetworkUiPacketLogEntry, MaxNetworkUiPacketLogEntries> packetLog{};
+        std::size_t packetLogSize = 0;
     };
 
     // Dear ImGui를 사용하여 네트워크 상태 및 패킷 정보를 시각화하는 UI 렌더러 클래스

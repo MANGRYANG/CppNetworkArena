@@ -1569,6 +1569,31 @@ namespace cna::client
         {
             networkUiData.connectionState = GetConnectionStateText(networkClient_->GetConnectionState());
             networkUiData.rttMilliseconds = networkClient_->GetLatestRttMilliseconds();
+
+            // 최근 네트워크 메시지 기록 조회
+            const auto& packetLog = networkClient_->GetPacketLog();
+
+            // UI에 표시할 최근 메시지의 시작 위치 계산
+            const std::size_t packetLogStartIndex = packetLog.size() > networkUiData.packetLog.size() ? packetLog.size() - networkUiData.packetLog.size() : 0;
+
+            // 네트워크 메시지 기록을 UI 출력 데이터로 변환
+            for (std::size_t index = packetLogStartIndex; index < packetLog.size(); ++index)
+            {
+                const NetworkClient::PacketLogEntry& packet = packetLog[index];
+
+                NetworkUiPacketLogEntry& uiPacket = networkUiData.packetLog[networkUiData.packetLogSize];
+
+                uiPacket.direction =
+                    packet.direction == NetworkClient::PacketLogDirection::Send
+                    ? NetworkUiPacketDirection::Send
+                    : NetworkUiPacketDirection::Receive;
+
+                uiPacket.messageType = packet.messageType;
+
+                uiPacket.payloadSize = packet.payloadSize;
+
+                ++networkUiData.packetLogSize;
+            }
         }
 
         // 현재 Room 및 로컬 Player 식별 정보 저장

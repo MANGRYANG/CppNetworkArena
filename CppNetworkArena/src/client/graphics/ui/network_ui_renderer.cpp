@@ -46,6 +46,48 @@ namespace
             return "Unknown";
         }
     }
+
+    // 네트워크 메시지 송수신 방향에 대응하는 문자열을 반환하는 함수
+    const char* GetPacketDirectionText(const cna::client::NetworkUiPacketDirection direction) noexcept
+    {
+        switch (direction)
+        {
+        case cna::client::NetworkUiPacketDirection::Send:
+            return "SEND";
+
+        case cna::client::NetworkUiPacketDirection::Receive:
+            return "RECV";
+
+        default:
+            return "UNKNOWN";
+        }
+    }
+
+    // 네트워크 메시지 타입에 대응하는 문자열을 반환하는 함수
+    const char* GetMessageTypeText(const cna::network::MessageType messageType) noexcept
+    {
+        switch (messageType)
+        {
+        case cna::network::MessageType::Ping:
+            return "Ping";
+
+        case cna::network::MessageType::Pong:
+            return "Pong";
+
+        case cna::network::MessageType::PlayerInput:
+            return "PlayerInput";
+
+        case cna::network::MessageType::WorldStateSnapshot:
+            return "WorldStateSnapshot";
+
+        case cna::network::MessageType::PlayerIdentity:
+            return "PlayerIdentity";
+
+        case cna::network::MessageType::Unknown:
+        default:
+            return "Unknown";
+        }
+    }
 }
 
 namespace cna::client
@@ -142,7 +184,7 @@ namespace cna::client
         // 최초 출력 시 UI 윈도우의 기본 크기 설정
         ImGui::SetNextWindowSize
         (
-            ImVec2(360.0f, 240.0f),
+            ImVec2(520.0f, 380.0f),
             ImGuiCond_FirstUseEver
         );
 
@@ -218,6 +260,42 @@ namespace cna::client
             ImGui::TextUnformatted("Game State: -");
             ImGui::TextUnformatted("Attacking Side: -");
             ImGui::TextUnformatted("Score: -");
+        }
+
+        // 수평선 출력
+        ImGui::Separator();
+
+        // 네트워크 메시지 송수신 기록 제목 출력
+        ImGui::TextUnformatted("[Packet Log]");
+
+        // 최근 송수신 메시지 정보를 테이블 형태로 출력
+        if (ImGui::BeginTable("PacketLogTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg, ImVec2(0.0f, 0.0f)))
+        {
+            // 테이블 열 구성
+            ImGui::TableSetupColumn("Direction", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+            ImGui::TableSetupColumn("MessageType");
+            ImGui::TableSetupColumn("Payload", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+
+            ImGui::TableHeadersRow();
+
+            // 가장 최근 메시지부터 역순으로 출력
+            for (std::size_t index = data.packetLogSize; index > 0; --index)
+            {
+                const NetworkUiPacketLogEntry& packet = data.packetLog[index - 1];
+
+                ImGui::TableNextRow();
+
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextUnformatted(GetPacketDirectionText(packet.direction));
+
+                ImGui::TableSetColumnIndex(1);
+                ImGui::TextUnformatted(GetMessageTypeText(packet.messageType));
+
+                ImGui::TableSetColumnIndex(2);
+                ImGui::Text("%llu Byte", static_cast<unsigned long long>(packet.payloadSize));
+            }
+
+            ImGui::EndTable();
         }
 
         ImGui::End();

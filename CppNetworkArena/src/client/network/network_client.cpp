@@ -90,6 +90,9 @@ namespace cna::client
         // 새로운 연결에 이전 연결의 송신 데이터가 남지 않도록 초기화
         ClearSendQueue();
 
+        // 새로운 연결에 이전 연결의 패킷 기록이 남지 않도록 초기화
+        packetLog_.clear();
+
         // 새로운 연결에 이전 연결의 RTT 정보가 남지 않도록 초기화
         latestRttMilliseconds_.reset();
 
@@ -200,6 +203,12 @@ namespace cna::client
         // 송신 중이거나 대기 중인 전체 바이트 수 갱신
         pendingSendBytes_ += messageSize;
 
+        // 송신 메시지 로그 구성
+        PacketLogEntry SentPacketLog = { PacketLogDirection::Send, type, payload.size() };
+
+        // 송신 큐에 등록된 메시지의 로그 기록
+        RecordPacketLog(SentPacketLog);
+
         // 진행 중인 송신 작업이 없는 경우 첫 메시지 송신 작업 등록
         if (!writeInProgress)
         {
@@ -302,6 +311,11 @@ namespace cna::client
     std::optional<float> NetworkClient::GetLatestRttMilliseconds() const noexcept
     {
         return latestRttMilliseconds_;
+    }
+
+    const std::deque<NetworkClient::PacketLogEntry>& NetworkClient::GetPacketLog() const noexcept
+    {
+        return packetLog_;
     }
 
     bool NetworkClient::IsCurrentOperation(std::uint64_t connectionGeneration, ConnectionState expectedState) const noexcept
@@ -536,6 +550,12 @@ namespace cna::client
                 payloadSize
             );
 
+            // 수신 메시지 로그 구성
+            PacketLogEntry receivePacketLog = { PacketLogDirection::Receive, header.type, payload.size() };
+
+            // 수신 완료된 메시지의 로그 기록
+            RecordPacketLog(receivePacketLog);
+            
             // 메시지 타입을 확인해 전용 핸들러 함수를 호출
             if (!DispatchMessage(header, payload))
             {
@@ -1034,5 +1054,17 @@ namespace cna::client
         socket_.shutdown(Tcp::socket::shutdown_both, ignoredError);
         // 소켓 종료
         socket_.close(ignoredError);
+    }
+
+    void NetworkClient::RecordPacketLog(PacketLogEntry packetLog)
+    {
+        // 최대 기록 개수를 초과하는 경우 가장 오래된 기록 제거
+        if (packetLog_.size() >= MaxPacketLogEntries)
+        {
+            packetLog_.pop_front();
+        }
+
+        // 최근 송수신 메시지 정보 추가
+        packetLog_.push_back(packetLog);
     }
 }

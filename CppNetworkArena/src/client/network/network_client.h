@@ -13,6 +13,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -34,6 +35,22 @@ namespace cna::client
             Resolving,
             Connecting,
             Connected
+        };
+
+        // 네트워크 메시지의 송수신 방향을 정의하는 열거형
+        enum class PacketLogDirection
+        {
+            Unknown,
+            Send,
+            Receive
+        };
+
+        // 네트워크 모니터에 기록할 송수신 메시지 정보
+        struct PacketLogEntry final
+        {
+            PacketLogDirection direction = PacketLogDirection::Unknown;
+            cna::network::MessageType messageType = cna::network::MessageType::Unknown;
+            std::size_t payloadSize = 0;
         };
 
         // 연결 성공 시 호출할 콜백 시그니처
@@ -100,6 +117,9 @@ namespace cna::client
         // 마지막으로 측정된 RTT를 밀리초 단위로 반환하는 함수
         std::optional<float> GetLatestRttMilliseconds() const noexcept;
 
+        // 최근 송수신 메시지 기록을 반환하는 함수
+        const std::deque<PacketLogEntry>& GetPacketLog() const noexcept;
+
     private:
         using Tcp = boost::asio::ip::tcp;
 
@@ -108,6 +128,9 @@ namespace cna::client
 
         // 서버에 송신 대기할 수 있는 최대 전체 바이트 수
         static constexpr std::size_t MaxPendingSendBytes = 256 * 1024;
+
+        // 네트워크 모니터링용으로 보관할 최대 송수신 메시지 기록 개수
+        static constexpr std::size_t MaxPacketLogEntries = 128;
 
         // 현재 연결 세대 및 클라이언트 연결 상태가 일치하는지 검증하는 내부 헬퍼
         bool IsCurrentOperation(std::uint64_t connectionGeneration, ConnectionState expectedState) const noexcept;
@@ -198,6 +221,9 @@ namespace cna::client
         // 소켓에 등록된 작업을 취소하고 소켓 종료
         void CloseSocket() noexcept;
 
+        // 송수신된 네트워크 메시지 정보를 최근 기록에 추가하는 함수
+        void RecordPacketLog(PacketLogEntry packetLog);
+
         // 서버 주소 해석을 담당하는 Resolver
         Tcp::resolver resolver_;
 
@@ -242,5 +268,8 @@ namespace cna::client
 
         // 마지막으로 측정된 서버와의 왕복 지연 시간
         std::optional<float> latestRttMilliseconds_;
+
+        // 최근 송수신한 네트워크 메시지 기록
+        std::deque<PacketLogEntry> packetLog_;
     };
 }
