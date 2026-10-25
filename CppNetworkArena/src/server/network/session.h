@@ -76,8 +76,8 @@ namespace cna::server
         // 메시지 타입에 따라 전용 핸들러 함수를 호출하는 디스패치 함수
         bool DispatchMessage(const cna::network::MessageHeader& header, std::span<const std::byte> payload);
 
-        // 테스트 요청 메시지 전용 핸들러 함수
-        bool HandleTestRequest(std::span<const std::byte> payload);
+        // Ping 메시지 전용 핸들러 함수
+        bool HandlePing(std::span<const std::byte> payload);
 
         // 플레이어 입력 메시지 전용 핸들러 함수
         bool HandlePlayerInput(std::span<const std::byte> payload);

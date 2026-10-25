@@ -33,6 +33,9 @@ namespace
     using namespace std::chrono_literals;
     constexpr std::chrono::milliseconds WorldStateInterpolationDelay = 64ms;
 
+    // RTT를 주기적으로 측정하기 위한 Ping 메시지 전송 간격
+    constexpr std::chrono::milliseconds RttProbeInterval = 500ms;
+
     // 플레이어의 한 바퀴 회전에 해당하는 라디안 값
     constexpr float FullRotationRadians = 6.28318530717958647692f;
 
@@ -1413,6 +1416,21 @@ namespace cna::client
 
     void ClientApplication::Update()
     {
+        // 현재 서버와 연결된 경우 주기적으로 RTT 측정
+        if (networkClient_->IsConnected())
+        {
+            const auto currentTime = std::chrono::steady_clock::now();
+
+            if (currentTime - lastRttProbeSentAt_ >= RttProbeInterval)
+            {
+                // Ping 전송에 성공한 경우 마지막 측정 요청 시각 갱신
+                if (networkClient_->SendPing())
+                {
+                    lastRttProbeSentAt_ = currentTime;
+                }
+            }
+        }
+
         // 아직 Room 입장이 승인되지 않은 경우 플레이어 입력을 전송하지 않음
         if (!clientGameState_.HasPlayerIdentity())
         {
@@ -1550,6 +1568,7 @@ namespace cna::client
         if (networkClient_)
         {
             networkUiData.connectionState = GetConnectionStateText(networkClient_->GetConnectionState());
+            networkUiData.rttMilliseconds = networkClient_->GetLatestRttMilliseconds();
         }
 
         // 현재 Room 및 로컬 Player 식별 정보 저장

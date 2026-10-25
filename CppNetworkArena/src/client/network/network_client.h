@@ -1,6 +1,7 @@
 #pragma once
 
 #include <network/messages/core/message_header.h>
+#include <network/messages/payloads/ping_message.h>
 #include <network/messages/payloads/player_identity_message.h>
 #include <network/messages/payloads/player_input_message.h>
 #include <network/messages/payloads/world_state_snapshot_message.h>
@@ -78,6 +79,9 @@ namespace cna::client
         // 메시지를 직렬화하여 비동기 송신 큐에 등록하는 함수
         bool Send(cna::network::MessageType type, std::span<const std::byte> payload);
 
+        // RTT 측정을 위한 Ping 메시지를 서버에 전송하는 함수
+        bool SendPing();
+
         // 플레이어 입력을 직렬화하여 비동기 송신 큐에 등록하는 함수
         bool SendPlayerInput(const cna::network::PlayerInputPayload& input);
 
@@ -92,6 +96,9 @@ namespace cna::client
 
         // 서버가 현재 연결에 할당한 Player ID를 반환하는 함수
         std::optional<cna::PlayerId> GetPlayerId() const noexcept;
+
+        // 마지막으로 측정된 RTT를 밀리초 단위로 반환하는 함수
+        std::optional<float> GetLatestRttMilliseconds() const noexcept;
 
     private:
         using Tcp = boost::asio::ip::tcp;
@@ -148,8 +155,8 @@ namespace cna::client
         // 메시지 타입에 따라 전용 핸들러 함수를 호출하는 디스패치 함수
         bool DispatchMessage(const cna::network::MessageHeader& header, std::span<const std::byte> payload);
 
-        // 테스트 요청 메시지 전용 핸들러 함수
-        bool HandleTestResponse(std::span<const std::byte> payload);
+        // Pong 메시지를 기반으로 RTT를 계산하는 함수
+        bool HandlePong(std::span<const std::byte> payload);
 
         // 플레이어 식별 정보 메시지 전용 핸들러 함수
         bool HandlePlayerIdentity(std::span<const std::byte> payload);
@@ -232,5 +239,8 @@ namespace cna::client
 
         // 서버가 현재 연결에 할당한 Room 및 Player 식별 정보
         std::optional<cna::network::PlayerIdentityPayload> playerIdentity_;
+
+        // 마지막으로 측정된 서버와의 왕복 지연 시간
+        std::optional<float> latestRttMilliseconds_;
     };
 }

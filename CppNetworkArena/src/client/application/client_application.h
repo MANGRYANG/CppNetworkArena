@@ -154,6 +154,9 @@ namespace cna::client
         // 비동기 통신 중 댕글링 포인터를 방지하기 위한 네트워크 클라이언트
         std::shared_ptr<NetworkClient> networkClient_;
 
+        // 마지막 RTT 측정 Ping을 전송한 시각
+        std::chrono::steady_clock::time_point lastRttProbeSentAt_;
+
         // 서버에서 수신한 현재 클라이언트 게임 상태
         ClientGameState clientGameState_;
 

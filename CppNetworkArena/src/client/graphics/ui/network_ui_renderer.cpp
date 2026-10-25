@@ -142,7 +142,7 @@ namespace cna::client
         // 최초 출력 시 UI 윈도우의 기본 크기 설정
         ImGui::SetNextWindowSize
         (
-            ImVec2(360.0f, 180.0f),
+            ImVec2(360.0f, 240.0f),
             ImGuiCond_FirstUseEver
         );
 
@@ -151,6 +151,16 @@ namespace cna::client
 
         // 현재 서버 연결 상태 출력
         ImGui::Text("Connection: %s", data.connectionState);
+
+        // 마지막으로 측정된 서버 왕복 지연 시간 출력
+        if (data.rttMilliseconds)
+        {
+            ImGui::Text("RTT: %.2f ms", *data.rttMilliseconds);
+        }
+        else
+        {
+            ImGui::TextUnformatted("RTT: -");
+        }
 
         // 현재 Room ID 출력
         if (data.roomId)

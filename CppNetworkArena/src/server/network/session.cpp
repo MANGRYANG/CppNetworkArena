@@ -1,6 +1,7 @@
 #include "session.h"
 
 #include <network/messages/core/message_codec.h>
+#include <network/messages/payloads/ping_message.h>
 #include <network/messages/payloads/player_input_message.h>
 
 #include <boost/asio/buffer.hpp>
@@ -65,12 +66,12 @@ namespace cna::server
         // 서버가 클라이언트로 전송할 수 있는 메시지 타입인지 확인
         switch (type)
         {
-        case cna::network::MessageType::TestResponse:
+        case cna::network::MessageType::Pong:
         case cna::network::MessageType::WorldStateSnapshot:
         case cna::network::MessageType::PlayerIdentity:
             break;
         case cna::network::MessageType::Unknown:
-        case cna::network::MessageType::TestRequest:
+        case cna::network::MessageType::Ping:
         case cna::network::MessageType::PlayerInput:
         default:
             std::cerr
@@ -314,14 +315,14 @@ namespace cna::server
         // 메시지 타입에 따라 전용 핸들러 함수 호출
         switch (header.type)
         {
-        case cna::network::MessageType::TestRequest:
-            return HandleTestRequest(payload);
+        case cna::network::MessageType::Ping:
+            return HandlePing(payload);
 
         case cna::network::MessageType::PlayerInput:
             return HandlePlayerInput(payload);
 
         case cna::network::MessageType::Unknown:
-        case cna::network::MessageType::TestResponse:
+        case cna::network::MessageType::Pong:
         case cna::network::MessageType::WorldStateSnapshot:
         case cna::network::MessageType::PlayerIdentity:
         default:
@@ -335,16 +336,25 @@ namespace cna::server
         }
     }
 
-    bool Session::HandleTestRequest(std::span<const std::byte> payload)
+    bool Session::HandlePing(std::span<const std::byte> payload)
     {
-        // 테스트 요청 메시지의 전달 경로 검증용 메시지 출력
-        std::cout
-            << "[Session] TestRequest dispatched: payload="
-            << payload.size()
-            << '\n';
+        cna::network::PingPayload ping;
 
-        // TestRequest 메시지에 대한 응답 메시지 송신 (TestResponse)
-        return Send(cna::network::MessageType::TestResponse, payload);
+        // Ping Payload 역직렬화에 실패한 경우 연결 종료
+        if (!cna::network::DecodePingPayload(payload, ping))
+        {
+            std::cerr
+                << "[Session] Invalid Ping payload from " << remoteEndpoint_
+                << ": payload=" << payload.size()
+                << '\n';
+
+            Close();
+
+            return false;
+        }
+
+        // 수신한 Ping Payload를 그대로 담아 Pong 메시지 반환
+        return Send(cna::network::MessageType::Pong, payload);
     }
 
     bool Session::HandlePlayerInput(std::span<const std::byte> payload)

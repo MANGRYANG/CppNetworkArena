@@ -16,6 +16,7 @@ namespace cna::client
     struct NetworkUiData final
     {
         const char* connectionState = "Disconnected";
+        std::optional<float> rttMilliseconds;
 
         std::optional<cna::RoomId> roomId;
         std::optional<cna::PlayerId> playerId;
